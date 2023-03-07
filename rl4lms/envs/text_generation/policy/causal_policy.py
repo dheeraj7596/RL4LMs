@@ -259,7 +259,7 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy, ActorCriticWarmStartMixin):
             self._policy_model.transformer.first_device
             if self._apply_model_parallel
             and unwrap_model(self._policy_model).is_parallelizable
-            else "cuda"
+            else self.device
         )
 
     def get_inputs_for_generation(self, obs: TensorDict):
