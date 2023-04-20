@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractclassmethod
 
 import torch
@@ -127,6 +128,8 @@ class MeteorRewardFunction(RewardFunction):
     def __init__(self, shaping_fn: str = None) -> None:
         super().__init__()
         self._metric = MeteorMetric()
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
         from rl4lms.envs.text_generation.registry import RewardFunctionRegistry
 
         self._shaping_fn = (
@@ -147,7 +150,7 @@ class MeteorRewardFunction(RewardFunction):
         # compute meteor at the end of episode
         if done:
             references = [next_observation.target_or_reference_texts]
-            predicted = [next_observation.context_text]
+            predicted = [re.sub(self.pattern, '', next_observation.context_text).replace(self.gpt3_end_token, " ")]
             metric_dict = self._metric.compute(None, predicted, references)
             score = metric_dict["lexical/meteor"][1]
 
@@ -485,6 +488,8 @@ class RougeLMaxRewardFunction(RewardFunction):
     def __init__(self, **args) -> None:
         super().__init__()
         self._metric = RougeLMax(**args)
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def __call__(
         self,
@@ -496,7 +501,7 @@ class RougeLMaxRewardFunction(RewardFunction):
     ) -> float:
         if done:
             references = [next_observation.target_or_reference_texts]
-            predicted = [next_observation.context_text]
+            predicted = [re.sub(self.pattern, '', next_observation.context_text).replace(self.gpt3_end_token, " ")]
             meta_infos = [meta_info]
             scores = self._metric.compute(None, predicted, references, meta_infos)
             reward = scores["lexical/rouge_l_max"][0][0]

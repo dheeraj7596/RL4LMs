@@ -13,6 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math
+import openai
+import os
+openai.api_key = os.environ["OPENAI_API_KEY"]
+
+from ratelimiter import RateLimiter
 
 from transformers.generation_utils import GenerationMixin
 import inspect
@@ -882,6 +888,12 @@ class GenerationMixinWithRawScores:
         bos_token_id: Optional[int] = None,
         pad_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
+        use_big_model: Optional[bool] = False,
+        gpt3_start_id: Optional[int] = None,
+        gpt3_end_id: Optional[int] = None,
+        arrow_id: Optional[int] = None,
+        num_tokenids_dict: Optional[Dict] = None,
+        tokenizer: Optional = None,
         length_penalty: Optional[float] = None,
         no_repeat_ngram_size: Optional[int] = None,
         encoder_no_repeat_ngram_size: Optional[int] = None,
@@ -1173,6 +1185,8 @@ class GenerationMixinWithRawScores:
         inputs_tensor, model_input_name, model_kwargs = self._prepare_model_inputs(
             inputs, bos_token_id, model_kwargs)
         batch_size = inputs_tensor.shape[0]
+        if use_big_model and batch_size > 1:
+            raise ValueError("Batch size has to be 1 when using big model.")
 
         # 3. Define other model kwargs
         model_kwargs["output_attentions"] = output_attentions
@@ -1329,6 +1343,12 @@ class GenerationMixinWithRawScores:
                 stopping_criteria=stopping_criteria,
                 pad_token_id=pad_token_id,
                 eos_token_id=eos_token_id,
+                use_big_model=use_big_model,
+                gpt3_start_id=gpt3_start_id,
+                gpt3_end_id=gpt3_end_id,
+                arrow_id=arrow_id,
+                num_tokenids_dict=num_tokenids_dict,
+                tokenizer=tokenizer,
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
@@ -1784,6 +1804,34 @@ class GenerationMixinWithRawScores:
         else:
             return input_ids
 
+    @RateLimiter(max_calls=100, period=60)
+    def call_big_model(self, tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id, arrow_id):
+        temp_input_ids = []
+        num_tokens = num_tokenids_dict[input_ids[0][-2]]
+        for id in input_ids[0]:
+            if id == gpt3_start_id or id in num_tokenids_dict or id == arrow_id or id == gpt3_end_id:
+                continue
+            temp_input_ids.append(id)
+
+        input = tokenizer.decode(temp_input_ids)
+        try:
+            completion = openai.ChatCompletion.create(model="gpt-3.5-turbo",
+                                                      messages=[
+                                                          {
+                                                              "role": "user",
+                                                              "content": input
+                                                          }
+                                                      ],
+                                                      max_tokens=num_tokens)
+            cont_gpt3 = completion.choices[0].message.content
+        except Exception as e:
+            print("OPENAI request failed", e)
+            cont_gpt3 = ""
+
+        gen_inputids = tokenizer(" " + cont_gpt3, return_tensors="pt")["input_ids"].to(input_ids.device)
+        next_tokenids = torch.cat([gen_inputids, torch.tensor([gpt3_end_id]).unsqueeze(0).to(input_ids.device)], dim=-1)
+        return next_tokenids
+
     def sample(
         self,
         input_ids: torch.LongTensor,
@@ -1793,6 +1841,12 @@ class GenerationMixinWithRawScores:
         max_length: Optional[int] = None,
         pad_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
+        use_big_model: Optional[bool] = False,
+        gpt3_start_id: Optional[int] = None,
+        gpt3_end_id: Optional[int] = None,
+        arrow_id: Optional[int] = None,
+        num_tokenids_dict: Optional[Dict] = None,
+        tokenizer: Optional = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_scores: Optional[bool] = None,
@@ -1943,6 +1997,7 @@ class GenerationMixinWithRawScores:
         cur_len = input_ids.shape[-1]
 
         this_peer_finished = False  # used by synced_gpus only
+        finished_in_big_model = False
         # auto-regressive generation
         while True:
 
@@ -1957,80 +2012,161 @@ class GenerationMixinWithRawScores:
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
-            # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(
-                input_ids, **model_kwargs)
+            if use_big_model and cur_len >= 3 and input_ids[0][-3] == gpt3_start_id and input_ids[0][
+                -2] in num_tokenids_dict and input_ids[0][-1] == arrow_id:
+                # the following call would return a tensor of shape 1 x num_new_tokens
+                next_tokens = self.call_big_model(tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id,
+                                                  arrow_id)
+                num_tokens_from_big_model = next_tokens.shape[-1]
+                for num_tok in range(num_tokens_from_big_model):
+                    # prepare model inputs
+                    model_inputs = self.prepare_inputs_for_generation(
+                        input_ids, **model_kwargs)
 
-            # forward pass to get next token
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
+                    # forward pass to get next token
+                    outputs = self(
+                        **model_inputs,
+                        return_dict=True,
+                        output_attentions=output_attentions,
+                        output_hidden_states=output_hidden_states,
+                    )
+                    if synced_gpus and this_peer_finished:
+                        cur_len = cur_len + 1
+                        continue  # don't waste resources running the code we don't need
 
-            if synced_gpus and this_peer_finished:
+                    next_token_logits_raw = outputs.logits[:, -1, :].clone()
+                    next_token_logits = outputs.logits[:, -1, :]
+
+                    # pre-process distribution
+                    next_token_scores = logits_processor(
+                        input_ids, next_token_logits, model_inputs=model_inputs)
+                    next_token_scores = logits_warper(
+                        input_ids, next_token_scores)
+                    #if generated token is not in top-k, copy from raw logits.
+                    if math.isinf(next_token_scores[0][next_tokens[0, num_tok].item()]):
+                        next_token_scores[0][next_tokens[0, num_tok].item()] = next_token_logits_raw[0][
+                            next_tokens[0, num_tok].item()]
+
+                    # Store scores, attentions and hidden_states when required
+                    if return_dict_in_generate:
+                        if output_scores:
+                            scores += ((next_token_logits_raw, next_token_scores),)
+                        if output_attentions:
+                            decoder_attentions += (
+                                (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
+                                    outputs.attentions,)
+                            )
+                            if self.config.is_encoder_decoder:
+                                cross_attentions += (outputs.cross_attentions,)
+
+                        if output_hidden_states:
+                            decoder_hidden_states += (
+                                (outputs.decoder_hidden_states,)
+                                if self.config.is_encoder_decoder
+                                else (outputs.hidden_states,)
+                            )
+
+                    # concatenate one by one generated token to input to obtain scores
+                    input_ids = torch.cat([input_ids, next_tokens[:, num_tok].unsqueeze(-1)], dim=-1)
+                    # update model inputs, and length for next step
+                    model_kwargs = self._update_model_kwargs_for_generation(
+                        outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+                    )
+                    cur_len = cur_len + 1
+
+                    # stop when each sentence is finished, or if we exceed the maximum length
+                    # removed unfinished_sequences.max() == 0 condition to make aggregation of scores and attentions easier.
+                    if stopping_criteria(input_ids, scores):
+                        finished_in_big_model = True
+                        if not synced_gpus:
+                            break
+                        else:
+                            this_peer_finished = True
+                # Removed "finished sentences should have their next token be a padding token" block because a sentence can never be finished by large model and batch size is 1.
+                # Removed "if eos_token was found in one sentence, set sentence to finished" eos_token can never be found in generation by large model.
+            else:
+                # prepare model inputs
+                model_inputs = self.prepare_inputs_for_generation(
+                    input_ids, **model_kwargs)
+
+                # forward pass to get next token
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
+
+                if synced_gpus and this_peer_finished:
+                    cur_len = cur_len + 1
+                    continue  # don't waste resources running the code we don't need
+
+                next_token_logits_raw = outputs.logits[:, -1, :].clone()
+                next_token_logits = outputs.logits[:, -1, :]
+
+                # pre-process distribution
+                next_token_scores = logits_processor(
+                    input_ids, next_token_logits, model_inputs=model_inputs)
+                next_token_scores = logits_warper(
+                    input_ids, next_token_scores)
+
+                # Store scores, attentions and hidden_states when required
+                if return_dict_in_generate:
+                    if output_scores:
+                        scores += ((next_token_logits_raw, next_token_scores),)
+                    if output_attentions:
+                        decoder_attentions += (
+                            (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
+                                outputs.attentions,)
+                        )
+                        if self.config.is_encoder_decoder:
+                            cross_attentions += (outputs.cross_attentions,)
+
+                    if output_hidden_states:
+                        decoder_hidden_states += (
+                            (outputs.decoder_hidden_states,)
+                            if self.config.is_encoder_decoder
+                            else (outputs.hidden_states,)
+                        )
+
+                # sample
+                probs = nn.functional.softmax(next_token_scores, dim=-1)
+                next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+
+                # finished sentences should have their next token be a padding token
+                if eos_token_id is not None:
+                    if pad_token_id is None:
+                        raise ValueError(
+                            "If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
+                    next_tokens = next_tokens * unfinished_sequences + \
+                        pad_token_id * (1 - unfinished_sequences)
+
+                # update generated ids, model inputs, and length for next step
+                input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+                model_kwargs = self._update_model_kwargs_for_generation(
+                    outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+                )
                 cur_len = cur_len + 1
-                continue  # don't waste resources running the code we don't need
 
-            next_token_logits_raw = outputs.logits[:, -1, :].clone()
-            next_token_logits = outputs.logits[:, -1, :]
-
-            # pre-process distribution
-            next_token_scores = logits_processor(
-                input_ids, next_token_logits, model_inputs=model_inputs)
-            next_token_scores = logits_warper(
-                input_ids, next_token_scores)
-
-            # Store scores, attentions and hidden_states when required
-            if return_dict_in_generate:
-                if output_scores:
-                    scores += ((next_token_logits_raw, next_token_scores),)
-                if output_attentions:
-                    decoder_attentions += (
-                        (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
-                            outputs.attentions,)
-                    )
-                    if self.config.is_encoder_decoder:
-                        cross_attentions += (outputs.cross_attentions,)
-
-                if output_hidden_states:
-                    decoder_hidden_states += (
-                        (outputs.decoder_hidden_states,)
-                        if self.config.is_encoder_decoder
-                        else (outputs.hidden_states,)
-                    )
-
-            # sample
-            probs = nn.functional.softmax(next_token_scores, dim=-1)
-            next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-
-            # finished sentences should have their next token be a padding token
-            if eos_token_id is not None:
-                if pad_token_id is None:
-                    raise ValueError(
-                        "If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
-                next_tokens = next_tokens * unfinished_sequences + \
-                    pad_token_id * (1 - unfinished_sequences)
-
-            # update generated ids, model inputs, and length for next step
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
-            )
-            cur_len = cur_len + 1
-
-            # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul(
-                    (next_tokens != eos_token_id).long())
+                # if eos_token was found in one sentence, set sentence to finished
+                if eos_token_id is not None:
+                    unfinished_sequences = unfinished_sequences.mul(
+                        (next_tokens != eos_token_id).long())
 
             # stop when each sentence is finished, or if we exceed the maximum length
-            if unfinished_sequences.max() == 0 or stopping_criteria(input_ids, scores):
-                if not synced_gpus:
-                    break
-                else:
-                    this_peer_finished = True
+            # removed unfinished_sequences.max() == 0 condition to make aggregation of scores and attentions easier.
+            if use_big_model:
+                if stopping_criteria(input_ids, scores) or finished_in_big_model:
+                    if not synced_gpus:
+                        break
+                    else:
+                        this_peer_finished = True
+            else:
+                if unfinished_sequences.max() == 0 or stopping_criteria(input_ids, scores):
+                    if not synced_gpus:
+                        break
+                    else:
+                        this_peer_finished = True
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:

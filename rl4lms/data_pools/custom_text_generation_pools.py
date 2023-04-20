@@ -206,6 +206,50 @@ class CNNDailyMail(TextGenPool):
         return pool_instance
 
 
+class CNNGPT23(TextGenPool):
+    @classmethod
+    def prepare(cls,
+                split: str,
+                data_path: str,
+                prompt_suffix: str = "",
+                prompt_prefix: str = "",
+                truncate_article: int = None,
+                max_size: int = None):
+        data_files = {"train": data_path}
+        extension = data_files["train"].split(".")[-1]
+        dataset = load_dataset(extension, data_files=data_files)
+        train_test_data_dict = dataset["train"].train_test_split(test_size=2000)
+        train_val_data_dict = train_test_data_dict["train"].train_test_split(test_size=1000)
+        dic = {
+            "train": train_val_data_dict["train"],
+            "validation": train_val_data_dict["test"],
+            "test": train_test_data_dict["test"]
+        }
+        dataset_split = CommonGen.gen_split_name(split)
+        samples = []
+        for ix, item in tqdm(enumerate(dic[dataset_split]),
+                             desc="Tokenizing dataset",
+                             total=len(dic[dataset_split])):
+
+            if truncate_article is not None:
+                tokens = word_tokenize(item["source"])
+                tokens = tokens[:truncate_article]
+                item["source"] = " ".join(tokens)
+
+            sample = Sample(id=f"{split}_{ix}",
+                            prompt_or_input_text=prompt_prefix +
+                            item["source"] + prompt_suffix,
+                            references=[item["target"]]
+                            )
+            samples.append(sample)
+
+            if max_size is not None and ix == (max_size-1):
+                break
+
+        pool_instance = cls(samples)
+        return pool_instance
+
+
 class IMDB(TextGenPool):
     """
     IMDB Dataset for sentiment continuation task

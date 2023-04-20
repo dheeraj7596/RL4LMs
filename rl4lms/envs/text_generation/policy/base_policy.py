@@ -14,6 +14,8 @@ from torch.distributions import Categorical
 from transformers import AutoTokenizer, PreTrainedModel
 from transformers.modeling_utils import unwrap_model
 
+from rl4lms.envs.text_generation.hf_generation_utils import SampleDecoderOnlyOutput
+
 
 class PolicyType(Enum):
     CAUSAL = 0
@@ -226,13 +228,74 @@ class LMActorCriticPolicy(BasePolicy):
             generation_kwargs_ = gen_kwargs
 
         # generate
-        gen_output = unwrap_model(self._policy_model).generate(
-            inputs=input_ids.to(self.get_policy_first_device()),
-            attention_mask=attention_mask.to(self.get_policy_first_device()),
-            return_dict_in_generate=True,
-            output_scores=True,
-            **generation_kwargs_,
-        )
+        if generation_kwargs_.get("use_big_model", "False") is True:
+            if self._policy_model.config.is_encoder_decoder:
+                raise ValueError("big model doesn't work for encoder-decoder")
+            out_input_ids = torch.tensor([], dtype=input_ids.dtype).to(input_ids.device)
+            out_scores = ()
+            out_decoder_attentions = ()
+            out_decoder_hidden_states = ()
+            batch_size = input_ids.shape[0]
+            for b in range(batch_size):
+                inp = input_ids[b].unsqueeze(0)
+                atn = attention_mask[b].unsqueeze(0)
+                out = unwrap_model(self._policy_model).generate(
+                    inputs=inp.to(self.get_policy_first_device()),
+                    attention_mask=atn.to(self.get_policy_first_device()),
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                    **generation_kwargs_,
+                )
+                assert isinstance(out, SampleDecoderOnlyOutput)
+                # aggregate input_ids
+                out_input_ids = torch.cat([out_input_ids, out.sequences], dim=0)
+                # aggregate scores
+                if out_scores is not None:
+                    if len(out_scores) == 0:
+                        out_scores = out.scores
+                    else:
+                        temp_out_scores = ()
+                        for num_token in range(len(out_scores)):
+                            temp_out_scores += (
+                            (torch.cat([out_scores[num_token][0], out.scores[num_token][0]], dim=0), torch.cat(
+                                [out_scores[num_token][1], out.scores[num_token][1]], dim=0)),)
+                        out_scores = temp_out_scores
+                # aggregate decoder_attentions
+                if out_decoder_attentions is not None:
+                    if len(out_decoder_attentions) == 0:
+                        out_decoder_attentions = out.attentions
+                    else:
+                        temp_out_attentions = ()
+                        for num_token in range(len(out_decoder_attentions)):
+                            temp_out_attentions += (
+                                (torch.cat([out_decoder_attentions[num_token], out.attentions[num_token]], dim=0),)
+                            )
+                        out_decoder_attentions = temp_out_attentions
+                # aggregate decoder_hidden_states
+                if out_decoder_hidden_states is not None:
+                    if len(out_decoder_hidden_states) == 0:
+                        out_decoder_hidden_states = out.hidden_states
+                    else:
+                        temp_out_hidden_states = ()
+                        for num_token in range(len(out_decoder_hidden_states)):
+                            temp_out_hidden_states += ((
+                                torch.cat([out_decoder_hidden_states[num_token], out.hidden_states[num_token]],
+                                          dim=0),))
+                        out_decoder_attentions = temp_out_hidden_states
+            gen_output = SampleDecoderOnlyOutput(
+                    sequences=out_input_ids,
+                    scores=out_scores,
+                    attentions=out_decoder_attentions,
+                    hidden_states=out_decoder_hidden_states,
+                )
+        else:
+            gen_output = unwrap_model(self._policy_model).generate(
+                inputs=input_ids.to(self.get_policy_first_device()),
+                attention_mask=attention_mask.to(self.get_policy_first_device()),
+                return_dict_in_generate=True,
+                output_scores=True,
+                **generation_kwargs_,
+            )
 
         # number of tokens generated
         seq_length = len(gen_output["scores"])

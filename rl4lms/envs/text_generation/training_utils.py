@@ -40,6 +40,9 @@ def build_tokenizer(tokenizer_config: Dict[str, Any]):
         "padding_side", "left")
     tokenizer.truncation_side = tokenizer_config.get(
         "truncation_side", "left")
+    new_tokens = tokenizer_config.get("new_tokens", [])
+    if len(new_tokens) > 0:
+        tokenizer.add_tokens(new_tokens)
     return tokenizer
 
 
@@ -115,10 +118,20 @@ def build_alg(alg_config: Dict[str, Any],
     }
     alg_kwargs = {**alg_kwargs, **alg_config.get("args")}
     wrapper = WrapperRegistry.get(alg_config["id"])
-    alg = wrapper(alg_cls, alg_kwargs,
-                  alg_config["kl_div"]["coeff"], tracker,
-                  alg_config["kl_div"].get("target_kl", None),
-                  alg_config["kl_div"].get("norm_reward", False))
+    if "cost_reward" in alg_config:
+        alg = wrapper(alg_cls, alg_kwargs,
+                      alg_config["kl_div"]["coeff"], tracker,
+                      alg_config["kl_div"].get("target_kl", None),
+                      alg_config["kl_div"].get("norm_reward", False),
+                      True,
+                      alg_config["cost_reward"].get("prompt_cost", 0.0),
+                      alg_config["cost_reward"].get("generation_cost", 0.0)
+                      )
+    else:
+        alg = wrapper(alg_cls, alg_kwargs,
+                      alg_config["kl_div"]["coeff"], tracker,
+                      alg_config["kl_div"].get("target_kl", None),
+                      alg_config["kl_div"].get("norm_reward", False))
     alg.load_from_dict(alg_state)
     return alg
 
@@ -161,6 +174,7 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
             self._datapool_config)
         self._env = build_env(self._env_config, self._reward_fn,
                               self._tokenizer, self._samples_by_split["train"])
+        self.update_config_if_use_big_model()
         self._alg = build_alg(self._on_policy_alg_config,
                               self._env, self._tracker,
                               self._policy_state_dict,
@@ -176,6 +190,29 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
         # gen kwargs for evaluation (if it is different from rollout gen kwargs)
         self._eval_gen_kwargs = self._train_eval_config.get(
             "generation_kwargs", None)
+
+    def update_config_if_use_big_model(self):
+        try:
+            if self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["use_big_model"] is True:
+                GPT3_START_TOKEN = ' <GPT3>'
+                GPT3_END_TOKEN = ' </GPT3>'
+                gpt3_startid = self._tokenizer(GPT3_START_TOKEN)["input_ids"][0]
+                gpt3_endid = self._tokenizer(GPT3_END_TOKEN)["input_ids"][0]
+                arrow_tokenid = 4613
+                num_tokenids_dict = {}
+                nums = [" one", " two", " three", " four", " five", " six", " seven", " eight", " nine", " ten"]
+                for i, n in enumerate(nums):
+                    tok_id = self._tokenizer(n)["input_ids"][0]
+                    num_tokenids_dict[tok_id] = i + 1
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["gpt3_start_id"] = gpt3_startid
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["gpt3_end_id"] = gpt3_endid
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["arrow_id"] = arrow_tokenid
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"][
+                    "num_tokenids_dict"] = num_tokenids_dict
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["tokenizer"] = self._tokenizer
+        except:
+            return
+
 
     def _evaluate_on_datapools(self, epoch: int,
                                splits: List[str] = ["val", "test"]):

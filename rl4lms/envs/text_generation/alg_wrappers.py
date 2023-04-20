@@ -30,6 +30,7 @@ class TransitionInfo:
     task_reward: np.ndarray
     total_reward: np.ndarray
     kl_div: np.ndarray
+    cost_reward: np.ndarray
     episode_start: np.ndarray
     value: torch.Tensor
     log_prob: torch.Tensor
@@ -94,6 +95,9 @@ def wrap_onpolicy_alg(
     tracker: Tracker,
     target_kl: float = None,
     norm_reward: bool = False,
+    cost_reward: bool = False,
+    prompt_cost: float = None,
+    generation_cost: float = None
 ):
     class OnPolicyAlgText(alg_class, OnPolicyWarmStartMixin):
         def __init__(
@@ -103,6 +107,9 @@ def wrap_onpolicy_alg(
             tracker: Tracker,
             target_kl: float = None,
             norm_reward: bool = False,
+            cost_reward: bool = False,
+            prompt_cost: float = 0.0,
+            generation_cost: float = 0.0
         ):
             alg_kwargs["tracker"] = tracker
             super().__init__(**alg_kwargs)
@@ -120,6 +127,13 @@ def wrap_onpolicy_alg(
                 n_envs=1,
             )
             self.reward_fn = self.env.get_attr("reward_function", 0)[0]
+            self.cost_reward = cost_reward
+            self.gpt3_startid = None
+            self.gpt3_endid = None
+            self.arrow_tokenid = None
+            self.num_tokenids_dict = {}
+            self.prompt_cost = prompt_cost
+            self.generation_cost = generation_cost
 
         def get_policy_kwargs(
             self,
@@ -137,6 +151,19 @@ def wrap_onpolicy_alg(
             if action_mask is not None:
                 policy_kwargs["action_masks"] = action_mask
             return policy_kwargs
+
+        def update_tokens(self, tokenizer):
+            if self.gpt3_startid is not None:
+                return
+            GPT3_START_TOKEN = ' <GPT3>'
+            GPT3_END_TOKEN = ' </GPT3>'
+            self.gpt3_startid = tokenizer(GPT3_START_TOKEN)["input_ids"][0]
+            self.gpt3_endid = tokenizer(GPT3_END_TOKEN)["input_ids"][0]
+            self.arrow_tokenid = 4613
+            nums = [" one", " two", " three", " four", " five", " six", " seven", " eight", " nine", " ten"]
+            for i, n in enumerate(nums):
+                tok_id = tokenizer(n)["input_ids"][0]
+                self.num_tokenids_dict[tok_id] = i + 1
 
         def generate_batch(
             self,
@@ -165,6 +192,8 @@ def wrap_onpolicy_alg(
             # process them one step at a time to collect rollout info
             episode_wise_transitions = [[] for _ in range(self.env.num_envs)]
             ep_terminated = np.zeros((self.env.num_envs,), dtype=bool)
+            if self.cost_reward:
+                self.update_tokens(tokenizer)
             value_past_state = None
             ref_past_state = None
             policy_past_state = None
@@ -241,11 +270,15 @@ def wrap_onpolicy_alg(
                 # step into env to get rewards
                 actions = actions_tensor.cpu().numpy()
                 new_obs, rewards, dones, infos = self.env.step(actions)
+                if self.cost_reward:
+                    cost_rewards = self.compute_cost_rewards(current_obs, dones, tokenizer)
+                else:
+                    cost_rewards = np.zeros((self.env.num_envs,))
 
                 self.num_timesteps += self.env.num_envs
 
                 # compute total rewards
-                total_rewards = rewards + kl_rewards.cpu().numpy()
+                total_rewards = rewards + kl_rewards.cpu().numpy() + cost_rewards
 
                 # unpack individual observations
                 unpacked_obs = unpack_observations(obs_tensor, self.env.num_envs)
@@ -260,6 +293,7 @@ def wrap_onpolicy_alg(
                             task_reward=rewards[env_ix],
                             total_reward=total_rewards[env_ix],
                             kl_div=kl_div.cpu().numpy()[env_ix],
+                            cost_reward=cost_rewards[env_ix],
                             episode_start=episode_starts[env_ix],
                             value=values[env_ix].cpu(),
                             log_prob=log_probs[env_ix].cpu(),
@@ -287,6 +321,51 @@ def wrap_onpolicy_alg(
             )
             return rollout_info
 
+        def compute_cost_rewards(self, current_obs, dones, tokenizer):
+            """
+            the cost reward can simply be -cost, 1/(cost + 1) or 1/(cost + 1)**2
+            :param current_obs:
+            :param dones:
+            :param tokenizer:
+            :return:
+            """
+            cost_rewards = np.zeros((self.env.num_envs,))
+            for env_ix in range(self.env.num_envs):
+                if dones[env_ix]:
+                    input_ids = current_obs["input_encoded_pt"]
+                    prompt_len = 0
+                    gen_len = 0
+                    num_calls = 0
+                    num_spl_tokens = 0
+                    i = 0
+                    while i < len(input_ids) - 4:
+                        if input_ids[i] in tokenizer.all_special_ids:
+                            num_spl_tokens += 1
+                            i += 1
+                        elif input_ids[i] == self.gpt3_startid and input_ids[i + 1] in self.num_tokenids_dict and \
+                                input_ids[i + 2] == self.arrow_tokenid:
+                            temp_var = i + 3
+                            flag = False
+                            while temp_var < len(input_ids):
+                                if input_ids[temp_var] == self.gpt3_endid:
+                                    flag = True
+                                    break
+                                temp_var += 1
+                            if flag:
+                                gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
+                                prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                                i = temp_var + 1
+                                num_calls += 1
+                            else:
+                                break
+                        else:
+                            i += 1
+                    cost_rewards[env_ix] = 1 / ((self.prompt_cost * prompt_len) + (self.generation_cost * gen_len) + 1)
+                else:
+                    cost_rewards[env_ix] = 0
+            return cost_rewards
+
+
         def _add_to_buffer(
             self, rollout_buffer, episode_wise_transitions, rollout_info
         ):
@@ -299,10 +378,13 @@ def wrap_onpolicy_alg(
                 ep_length = len(transitions)
                 total_reward = 0.0
                 total_kl_reward = 0.0
+                total_cost_reward = 0.0
                 for transition_ix, transition in enumerate(transitions):
                     total_reward += transition.task_reward
                     total_kl_reward += transition.kl_reward
+                    total_cost_reward += transition.cost_reward
                     rollout_info["rollout_info/kl_div_mean"].append(transition.kl_div)
+                    rollout_info["rollout_info/cost_reward_mean"].append(transition.cost_reward)
                     rollout_info["rollout_info/log_prob"].append(transition.log_prob)
                     rollout_info["rollout_info/ref_log_prob"].append(
                         transition.ref_log_prob
@@ -347,6 +429,7 @@ def wrap_onpolicy_alg(
                 rollout_info["rollout_info/ep_rew"].append(total_reward)
                 rollout_info["rollout_info/ep_lens"].append(ep_length)
                 rollout_info["rollout_info/ep_kl_rew"].append(total_kl_reward)
+                rollout_info["rollout_info/ep_cost_rew"].append(total_cost_reward)
             return rollout_info
 
         def collect_rollouts(
@@ -404,5 +487,6 @@ def wrap_onpolicy_alg(
             return True
 
     # instantiate the wrapped alg
-    alg = OnPolicyAlgText(alg_kwargs, kl_coeff, tracker, target_kl, norm_reward)
+    alg = OnPolicyAlgText(alg_kwargs, kl_coeff, tracker, target_kl, norm_reward, cost_reward, prompt_cost,
+                          generation_cost)
     return alg

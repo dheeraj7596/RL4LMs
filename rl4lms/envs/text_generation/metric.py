@@ -1,3 +1,5 @@
+import re
+
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers import PreTrainedModel
 import torch
@@ -108,6 +110,8 @@ class MeteorMetric(BaseMetric):
     def __init__(self) -> None:
         super().__init__()
         self._metric = load_metric("meteor")
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -118,6 +122,7 @@ class MeteorMetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ):
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
 
         score = self._metric.compute(
             predictions=generated_texts, references=reference_texts
@@ -132,6 +137,8 @@ class RougeMetric(BaseMetric):
         super().__init__()
         self._metric = load_metric("rouge")
         self._use_single_ref = use_single_ref
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -149,6 +156,8 @@ class RougeMetric(BaseMetric):
         else:
             ref_texts = reference_texts
 
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
+
         metric_results = self._metric.compute(
             predictions=generated_texts, references=ref_texts, use_stemmer=True
         )
@@ -157,6 +166,37 @@ class RougeMetric(BaseMetric):
         for rouge_type in score_keys:
             rouge_score = metric_results[rouge_type].mid.fmeasure
             metric_dict[f"lexical/rouge_{rouge_type}"] = (None, rouge_score)
+        return metric_dict
+
+
+class GPT3NumTokensMetric(BaseMetric):
+    def __init__(self) -> None:
+        super().__init__()
+        self.num_str_num = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                            "nine": 9, "ten": 10}
+
+    def compute(
+        self,
+        prompt_texts: List[str],
+        generated_texts: List[str],
+        reference_texts: List[List[str]],
+        meta_infos: List[Dict[str, Any]] = None,
+        model: PreTrainedModel = None,
+        split_name: str = None,
+    ):
+        num_tokens = []
+        for gen_text in generated_texts:
+            found = False
+            call = 0
+            for w in gen_text.strip().split():
+                if found:
+                    call += self.num_str_num[w]
+                    found = False
+                elif w == "<GPT3>":
+                    found = True
+            num_tokens.append(call)
+
+        metric_dict = {"avg_num_tokens_gpt3": np.mean(num_tokens)}
         return metric_dict
 
 

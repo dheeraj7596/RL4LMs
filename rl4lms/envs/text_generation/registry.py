@@ -20,6 +20,7 @@ from rl4lms.data_pools.custom_text_generation_pools import (
     WMT14PreprocessedEnDe,
     WMT16NewsOnlyDatasetEnDe,
     DailyDialog,
+    CNNGPT23,
 )
 from rl4lms.data_pools.text_generation_pool import TextGenPool
 from rl4lms.envs.text_generation.alg_wrappers import wrap_onpolicy_alg
@@ -44,6 +45,7 @@ from rl4lms.envs.text_generation.metric import (
     TERMetric,
     chrFmetric,
     IntentAccuracyDailyDialog,
+    GPT3NumTokensMetric,
 )
 from rl4lms.envs.text_generation.policy.base_policy import LMActorCriticPolicy
 from rl4lms.envs.text_generation.policy.causal_policy import (
@@ -90,6 +92,7 @@ class DataPoolRegistry:
         "commongen": CommonGen,
         "totto": ToTTo,
         "cnn_daily_mail": CNNDailyMail,
+        "cnn_gpt23": CNNGPT23,
         "imdb_seq2seq": IMDBForSeq2Seq,
         "narrative_qa": NarrativeQA,
         "wmt16": WMT,
@@ -152,6 +155,7 @@ class MetricRegistry:
         "learned_reward": LearnedRewardMetric,
         "meteor": MeteorMetric,
         "rouge": RougeMetric,
+        "gpt3_numtokens": GPT3NumTokensMetric,
         "bert_score": BERTScoreMetric,
         "bleu": BLEUMetric,
         "bleurt": BLEURTMetric,
