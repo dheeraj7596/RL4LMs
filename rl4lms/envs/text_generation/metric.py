@@ -61,6 +61,8 @@ class LearnedRewardMetric(BaseMetric):
         self._label_ix = label_ix
         self._batch_size = batch_size
         self._include_prompt_for_eval = include_prompt_for_eval
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -87,6 +89,7 @@ class LearnedRewardMetric(BaseMetric):
                     (prompt + gen)
                     for gen, prompt in zip(batch_gen_texts, batch_prompt_texts)
                 ]
+            batch_gen_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in batch_gen_texts]
             encoded = self._tokenizer(
                 batch_gen_texts, return_tensors="pt", truncation=True, padding=True
             )

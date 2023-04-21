@@ -255,7 +255,7 @@ class IMDB(TextGenPool):
     IMDB Dataset for sentiment continuation task
     """
     @classmethod
-    def prepare(cls, split: str):
+    def prepare(cls, split: str, prompt_suffix: str = "", prompt_prefix: str = ""):
         dataset = load_dataset("imdb", ignore_verifications=True)
         if split in ["train", "val"]:
             dataset_split = dataset["train"].shuffle()
@@ -271,7 +271,7 @@ class IMDB(TextGenPool):
 
             # here we consider 50% of tokens as prompt
             prompt_text = text.split(" ")
-            prompt_text = " ".join(prompt_text[:int(len(prompt_text) * 0.5)])
+            prompt_text = prompt_prefix + " ".join(prompt_text[:int(len(prompt_text) * 0.5)]) + prompt_suffix
 
             sample = Sample(id=f"{split}_{ix}",
                             prompt_or_input_text=prompt_text,

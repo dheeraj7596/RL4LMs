@@ -1804,7 +1804,7 @@ class GenerationMixinWithRawScores:
         else:
             return input_ids
 
-    @RateLimiter(max_calls=100, period=60)
+    @RateLimiter(max_calls=700, period=60)
     def call_big_model(self, tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id, arrow_id):
         temp_input_ids = []
         num_tokens = num_tokenids_dict[input_ids[0][-2]]

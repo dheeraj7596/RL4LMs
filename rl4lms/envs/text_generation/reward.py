@@ -403,6 +403,8 @@ class LearnedRewardFunction(RewardFunction):
         ).to(self._device)
         self._label_ix = label_ix
         self._include_prompt_for_eval = include_prompt_for_eval
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def __call__(
         self,
@@ -419,6 +421,7 @@ class LearnedRewardFunction(RewardFunction):
                 else ""
             )
             generated_text += next_observation.context_text
+            generated_text = re.sub(self.pattern, '', generated_text).replace(self.gpt3_end_token, " ")
 
             with torch.no_grad():
                 encoded = self._metric_tokenizer(
