@@ -231,7 +231,7 @@ class LMActorCriticPolicy(BasePolicy):
         if generation_kwargs_.get("use_big_model", "False") is True:
             if self._policy_model.config.is_encoder_decoder:
                 raise ValueError("big model doesn't work for encoder-decoder")
-            out_input_ids = torch.tensor([], dtype=input_ids.dtype).to(input_ids.device)
+            out_input_ids = torch.tensor([], dtype=input_ids.dtype)
             out_scores = ()
             out_decoder_attentions = ()
             out_decoder_hidden_states = ()
@@ -248,7 +248,7 @@ class LMActorCriticPolicy(BasePolicy):
                 )
                 assert isinstance(out, SampleDecoderOnlyOutput)
                 # aggregate input_ids
-                out_input_ids = torch.cat([out_input_ids, out.sequences], dim=0)
+                out_input_ids = torch.cat([out_input_ids.to(out.sequences.device), out.sequences], dim=0)
                 # aggregate scores
                 if out_scores is not None:
                     if len(out_scores) == 0:
