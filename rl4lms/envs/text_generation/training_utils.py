@@ -125,7 +125,8 @@ def build_alg(alg_config: Dict[str, Any],
                       alg_config["kl_div"].get("norm_reward", False),
                       True,
                       alg_config["cost_reward"].get("prompt_cost", 0.0),
-                      alg_config["cost_reward"].get("generation_cost", 0.0)
+                      alg_config["cost_reward"].get("generation_cost", 0.0),
+                      alg_config["cost_reward"].get("cost_reward_coeff", 0.3),
                       )
     else:
         alg = wrapper(alg_cls, alg_kwargs,
@@ -198,6 +199,9 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
                 GPT3_END_TOKEN = ' </GPT3>'
                 gpt3_startid = self._tokenizer(GPT3_START_TOKEN)["input_ids"][0]
                 gpt3_endid = self._tokenizer(GPT3_END_TOKEN)["input_ids"][0]
+                big_model_prompt_ids = self._tokenizer(
+                    self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["big_model_prompt"]
+                )["input_ids"]
                 arrow_tokenid = 4613
                 num_tokenids_dict = {}
                 nums = [" one", " two", " three", " four", " five", " six", " seven", " eight", " nine", " ten"]
@@ -210,6 +214,8 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
                 self._on_policy_alg_config["policy"]["args"]["generation_kwargs"][
                     "num_tokenids_dict"] = num_tokenids_dict
                 self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["tokenizer"] = self._tokenizer
+                self._on_policy_alg_config["policy"]["args"]["generation_kwargs"][
+                    "big_model_prompt_ids"] = big_model_prompt_ids
         except:
             return
 

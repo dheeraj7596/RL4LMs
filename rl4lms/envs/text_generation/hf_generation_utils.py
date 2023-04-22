@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import math
 import openai
 import os
@@ -893,6 +894,7 @@ class GenerationMixinWithRawScores:
         gpt3_end_id: Optional[int] = None,
         arrow_id: Optional[int] = None,
         num_tokenids_dict: Optional[Dict] = None,
+        big_model_prompt_ids: Optional[List] = None,
         tokenizer: Optional = None,
         length_penalty: Optional[float] = None,
         no_repeat_ngram_size: Optional[int] = None,
@@ -1348,6 +1350,7 @@ class GenerationMixinWithRawScores:
                 gpt3_end_id=gpt3_end_id,
                 arrow_id=arrow_id,
                 num_tokenids_dict=num_tokenids_dict,
+                big_model_prompt_ids=big_model_prompt_ids,
                 tokenizer=tokenizer,
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
@@ -1805,13 +1808,17 @@ class GenerationMixinWithRawScores:
             return input_ids
 
     @RateLimiter(max_calls=700, period=60)
-    def call_big_model(self, tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id, arrow_id):
-        temp_input_ids = []
-        num_tokens = num_tokenids_dict[input_ids[0][-2]]
+    def call_big_model(self, tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id, arrow_id, big_model_prompt_ids):
+        temp_input_ids = copy.deepcopy(big_model_prompt_ids)
+        num_tokens = num_tokenids_dict[input_ids[0][-2].item()]
+        flag = False
         for id in input_ids[0]:
-            if id == gpt3_start_id or id in num_tokenids_dict or id == arrow_id or id == gpt3_end_id:
+            if id.item() == gpt3_start_id or id.item() in num_tokenids_dict or id.item() == arrow_id or id.item() == gpt3_end_id:
                 continue
-            temp_input_ids.append(id)
+            if flag is False and id.item() not in big_model_prompt_ids:
+                flag = True
+            if flag:
+                temp_input_ids.append(id.item())
 
         input = tokenizer.decode(temp_input_ids)
         try:
@@ -1846,6 +1853,7 @@ class GenerationMixinWithRawScores:
         gpt3_end_id: Optional[int] = None,
         arrow_id: Optional[int] = None,
         num_tokenids_dict: Optional[Dict] = None,
+        big_model_prompt_ids: Optional[List] = None,
         tokenizer: Optional = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -2012,11 +2020,11 @@ class GenerationMixinWithRawScores:
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
-            if use_big_model and cur_len >= 3 and input_ids[0][-3] == gpt3_start_id and input_ids[0][
-                -2] in num_tokenids_dict and input_ids[0][-1] == arrow_id:
+            if use_big_model and cur_len >= 3 and input_ids[0][-3].item() == gpt3_start_id and input_ids[0][
+                -2].item() in num_tokenids_dict and input_ids[0][-1].item() == arrow_id:
                 # the following call would return a tensor of shape 1 x num_new_tokens
                 next_tokens = self.call_big_model(tokenizer, input_ids, num_tokenids_dict, gpt3_start_id, gpt3_end_id,
-                                                  arrow_id)
+                                                  arrow_id, big_model_prompt_ids)
                 num_tokens_from_big_model = next_tokens.shape[-1]
                 for num_tok in range(num_tokens_from_big_model):
                     # prepare model inputs

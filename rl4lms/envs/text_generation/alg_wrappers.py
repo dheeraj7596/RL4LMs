@@ -97,7 +97,8 @@ def wrap_onpolicy_alg(
     norm_reward: bool = False,
     cost_reward: bool = False,
     prompt_cost: float = None,
-    generation_cost: float = None
+    generation_cost: float = None,
+    cost_reward_coeff: float = 0.3
 ):
     class OnPolicyAlgText(alg_class, OnPolicyWarmStartMixin):
         def __init__(
@@ -109,7 +110,8 @@ def wrap_onpolicy_alg(
             norm_reward: bool = False,
             cost_reward: bool = False,
             prompt_cost: float = 0.0,
-            generation_cost: float = 0.0
+            generation_cost: float = 0.0,
+            cost_reward_coeff: float = 0.3
         ):
             alg_kwargs["tracker"] = tracker
             super().__init__(**alg_kwargs)
@@ -134,6 +136,7 @@ def wrap_onpolicy_alg(
             self.num_tokenids_dict = {}
             self.prompt_cost = prompt_cost
             self.generation_cost = generation_cost
+            self.cost_reward_coeff = cost_reward_coeff
 
         def get_policy_kwargs(
             self,
@@ -271,7 +274,7 @@ def wrap_onpolicy_alg(
                 actions = actions_tensor.cpu().numpy()
                 new_obs, rewards, dones, infos = self.env.step(actions)
                 if self.cost_reward:
-                    cost_rewards = self.compute_cost_rewards(current_obs, dones, tokenizer)
+                    cost_rewards = self.cost_reward_coeff * self.compute_cost_rewards(current_obs, dones, tokenizer)
                 else:
                     cost_rewards = np.zeros((self.env.num_envs,))
 
@@ -332,7 +335,7 @@ def wrap_onpolicy_alg(
             cost_rewards = np.zeros((self.env.num_envs,))
             for env_ix in range(self.env.num_envs):
                 if dones[env_ix]:
-                    input_ids = current_obs["input_encoded_pt"]
+                    input_ids = current_obs["input_encoded_pt"][env_ix]
                     prompt_len = 0
                     gen_len = 0
                     num_calls = 0
@@ -345,19 +348,14 @@ def wrap_onpolicy_alg(
                         elif input_ids[i] == self.gpt3_startid and input_ids[i + 1] in self.num_tokenids_dict and \
                                 input_ids[i + 2] == self.arrow_tokenid:
                             temp_var = i + 3
-                            flag = False
                             while temp_var < len(input_ids):
                                 if input_ids[temp_var] == self.gpt3_endid:
-                                    flag = True
                                     break
                                 temp_var += 1
-                            if flag:
-                                gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
-                                prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
-                                i = temp_var + 1
-                                num_calls += 1
-                            else:
-                                break
+                            gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
+                            prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                            i = temp_var + 1
+                            num_calls += 1
                         else:
                             i += 1
                     cost_rewards[env_ix] = 1 / ((self.prompt_cost * prompt_len) + (self.generation_cost * gen_len) + 1)
@@ -461,6 +459,8 @@ def wrap_onpolicy_alg(
                 "rollout_info/log_prob": [],
                 "rollout_info/ref_log_prob": [],
                 "rollout_info/values": [],
+                "rollout_info/ep_cost_rew": [],
+                "rollout_info/cost_reward_mean": []
             }
             while not rollout_buffer.full:
                 # generate batch of rollouts
@@ -488,5 +488,5 @@ def wrap_onpolicy_alg(
 
     # instantiate the wrapped alg
     alg = OnPolicyAlgText(alg_kwargs, kl_coeff, tracker, target_kl, norm_reward, cost_reward, prompt_cost,
-                          generation_cost)
+                          generation_cost, cost_reward_coeff)
     return alg

@@ -199,7 +199,71 @@ class GPT3NumTokensMetric(BaseMetric):
                     found = True
             num_tokens.append(call)
 
-        metric_dict = {"avg_num_tokens_gpt3": np.mean(num_tokens)}
+        metric_dict = {"avg_num_tokens_gpt3": (num_tokens, np.mean(num_tokens))}
+        return metric_dict
+
+
+class CostRewardMetric(BaseMetric):
+    def __init__(
+        self,
+        tokenizer_id: str,
+        prompt_cost: float,
+        generation_cost: float
+    ) -> None:
+        super().__init__()
+        self._tokenizer_id = tokenizer_id
+        self.tokenizer = AutoTokenizer.from_pretrained(self._tokenizer_id)
+        self.prompt_cost = prompt_cost
+        self.generation_cost = generation_cost
+        GPT3_START_TOKEN = ' <GPT3>'
+        GPT3_END_TOKEN = ' </GPT3>'
+        self.gpt3_startid = self.tokenizer(GPT3_START_TOKEN)["input_ids"][0]
+        self.gpt3_endid = self.tokenizer(GPT3_END_TOKEN)["input_ids"][0]
+        self.arrow_tokenid = 4613
+        nums = [" one", " two", " three", " four", " five", " six", " seven", " eight", " nine", " ten"]
+        self.num_tokenids_dict = {}
+        for i, n in enumerate(nums):
+            tok_id = self.tokenizer(n)["input_ids"][0]
+            self.num_tokenids_dict[tok_id] = i + 1
+
+    def compute(
+        self,
+        prompt_texts: List[str],
+        generated_texts: List[str],
+        reference_texts: List[List[str]],
+        meta_infos: List[Dict[str, Any]] = None,
+        model: PreTrainedModel = None,
+        split_name: str = None,
+    ):
+        cost_rewards = []
+        for g in generated_texts:
+            input_ids = self.tokenizer(g)["input_ids"]
+            prompt_len = 0
+            gen_len = 0
+            num_calls = 0
+            num_spl_tokens = 0
+            i = 0
+            while i < len(input_ids) - 4:
+                if input_ids[i] in self.tokenizer.all_special_ids:
+                    num_spl_tokens += 1
+                    i += 1
+                elif input_ids[i] == self.gpt3_startid and input_ids[i + 1] in self.num_tokenids_dict and input_ids[
+                    i + 2] == self.arrow_tokenid:
+                    temp_var = i + 3
+                    while temp_var < len(input_ids):
+                        if input_ids[temp_var] == self.gpt3_endid:
+                            break
+                        temp_var += 1
+                    gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
+                    prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                    i = temp_var + 1
+                    num_calls += 1
+                else:
+                    i += 1
+            cost = 1 / ((self.prompt_cost * prompt_len) + (self.generation_cost * gen_len) + 1)
+            cost_rewards.append(cost)
+
+        metric_dict = {"avg_cost_reward": (cost_rewards, np.mean(cost_rewards))}
         return metric_dict
 
 

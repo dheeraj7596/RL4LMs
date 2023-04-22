@@ -46,6 +46,7 @@ from rl4lms.envs.text_generation.metric import (
     chrFmetric,
     IntentAccuracyDailyDialog,
     GPT3NumTokensMetric,
+    CostRewardMetric,
 )
 from rl4lms.envs.text_generation.policy.base_policy import LMActorCriticPolicy
 from rl4lms.envs.text_generation.policy.causal_policy import (
@@ -156,6 +157,7 @@ class MetricRegistry:
         "meteor": MeteorMetric,
         "rouge": RougeMetric,
         "gpt3_numtokens": GPT3NumTokensMetric,
+        "cost_reward": CostRewardMetric,
         "bert_score": BERTScoreMetric,
         "bleu": BLEUMetric,
         "bleurt": BLEURTMetric,

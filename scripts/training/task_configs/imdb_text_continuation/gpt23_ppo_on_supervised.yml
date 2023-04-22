@@ -21,7 +21,7 @@ datapool:
 env:
   n_envs: 10
   args:
-    max_prompt_length: 74
+    max_prompt_length: 64
     max_episode_length: 48
     terminate_on_eos: True
 
@@ -41,6 +41,7 @@ alg:
   cost_reward:
     prompt_cost: 0.05
     generation_cost: 0.05
+    cost_reward_coeff: 0.3
 
   policy:
     id: causal_lm_actor_critic_policy
@@ -52,6 +53,7 @@ alg:
         min_length: 48
         max_new_tokens: 48
         use_big_model: True
+        big_model_prompt: "Continue this text into a positive movie review.\n"
 
 train_evaluation:
   eval_batch_size: 128
@@ -73,3 +75,8 @@ train_evaluation:
       args: {}
     - id: gpt3_numtokens
       args: {}
+    - id: cost_reward
+      args:
+        tokenizer_id: '/Users/dheerajmekala/Work/RL4LMs/models/gpt23_large_imdb'
+        prompt_cost: 0.05
+        generation_cost: 0.05
