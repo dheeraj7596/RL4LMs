@@ -229,7 +229,7 @@ class LMActorCriticPolicy(BasePolicy):
 
         # generate
         if generation_kwargs_.get("use_big_model", "False") is True:
-            if self._policy_model.config.is_encoder_decoder:
+            if self.is_encoder_decoder(self._policy_model):
                 raise ValueError("big model doesn't work for encoder-decoder")
             out_input_ids = torch.tensor([], dtype=input_ids.dtype)
             out_scores = ()
