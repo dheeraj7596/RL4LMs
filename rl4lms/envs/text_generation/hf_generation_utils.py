@@ -1821,6 +1821,7 @@ class GenerationMixinWithRawScores:
                 temp_input_ids.append(id.item())
 
         input = tokenizer.decode(temp_input_ids)
+        logger.warning(f"Calling GPT3\n{input}")
         try:
             completion = openai.ChatCompletion.create(model="gpt-3.5-turbo",
                                                       messages=[
