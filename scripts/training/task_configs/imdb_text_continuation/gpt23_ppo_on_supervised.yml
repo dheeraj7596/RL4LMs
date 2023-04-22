@@ -77,6 +77,6 @@ train_evaluation:
       args: {}
     - id: cost_reward
       args:
-        tokenizer_id: '/Users/dheerajmekala/Work/RL4LMs/models/gpt23_large_imdb'
+        tokenizer_id: '/data/dheeraj/GPT23/saved_models/gpt2_3_large_imdb/'
         prompt_cost: 0.05
         generation_cost: 0.05
