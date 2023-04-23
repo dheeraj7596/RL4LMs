@@ -1813,6 +1813,8 @@ class GenerationMixinWithRawScores:
         num_tokens = num_tokenids_dict[input_ids[0][-2].item()]
         flag = False
         for id in input_ids[0]:
+            if id in tokenizer.all_special_ids:
+                continue
             if id.item() == gpt3_start_id or id.item() in num_tokenids_dict or id.item() == arrow_id or id.item() == gpt3_end_id:
                 continue
             if flag is False and id.item() not in big_model_prompt_ids:
