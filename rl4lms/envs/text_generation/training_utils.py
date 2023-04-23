@@ -216,7 +216,8 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
                 self._on_policy_alg_config["policy"]["args"]["generation_kwargs"]["tokenizer"] = self._tokenizer
                 self._on_policy_alg_config["policy"]["args"]["generation_kwargs"][
                     "big_model_prompt_ids"] = big_model_prompt_ids
-        except:
+        except Exception as e:
+            print("******Exception while updating*******", e)
             return
 
 
