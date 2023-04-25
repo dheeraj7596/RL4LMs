@@ -252,6 +252,9 @@ class OnPolicyTrainer(TrainerWarmStartMixin):
             if (epoch + 1) % self._train_eval_config.get("save_every", 20) == 0:
                 self.save_trainer_state(
                     self._tracker, self._alg.policy, self._trainer_state)
+                if self._tracker is not None:
+                    self._tracker.save_auto_model(
+                        self._alg.policy.get_language_model())
 
             # evaluate on val set in the given intervals
             if (epoch + 1) % self._train_eval_config["eval_every"] == 0:
