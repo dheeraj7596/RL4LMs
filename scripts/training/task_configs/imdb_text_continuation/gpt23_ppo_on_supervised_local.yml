@@ -1,0 +1,83 @@
+tokenizer:
+  model_name: '/Users/dheerajmekala/Work/RL4LMs/models/gpt23_large_imdb/'
+  padding_side: left
+  truncation_side: left
+  pad_token_as_eos_token: True
+#  new_tokens: [' <GPT3>', ' </GPT3>']
+
+reward_fn:
+  id: learned_reward
+  args:
+    model_name: lvwerra/distilbert-imdb
+    label_ix: 1
+    include_prompt_for_eval: True
+
+datapool:
+  id: imdb
+  args:
+    prompt_prefix: "Continue this text into a positive movie review.\n"
+    prompt_suffix: " "
+
+env:
+  n_envs: 2
+  args:
+    max_prompt_length: 64
+    max_episode_length: 10
+    terminate_on_eos: True
+
+alg:
+  id: ppo
+  args:
+    n_steps: 128
+    batch_size: 2
+    verbose: 1
+    learning_rate: 0.000001
+    n_epochs: 5
+
+  kl_div:
+    coeff: 0.1
+    target_kl: 0.5
+
+  cost_reward:
+    prompt_cost: 0.05
+    generation_cost: 0.05
+    cost_reward_coeff: 0.3
+
+  policy:
+    id: causal_lm_actor_critic_policy
+    args:
+      model_name: '/Users/dheerajmekala/Work/RL4LMs/models/gpt23_large_imdb/'
+      apply_model_parallel: False
+      generation_kwargs:
+        do_sample: True
+        min_length: 10
+        max_new_tokens: 10
+        use_big_model: True
+        big_model_prompt: "Continue this text into a positive movie review.\n"
+        loss_for_big_model: False
+
+train_evaluation:
+  eval_batch_size: 2
+  n_iters: 50
+  eval_every: 10
+  save_every: 1
+  metrics:
+    - id: learned_reward
+      args:
+        model_name: lvwerra/distilbert-imdb
+        label_ix: 1
+        batch_size: 64
+    - id: causal_perplexity
+      args:
+        tokenizer_id: gpt2
+        stride: 512
+        model_type: causal
+    - id: diversity
+      args: {}
+    - id: gpt3_numtokens
+      args: {}
+    - id: cost_reward
+      args:
+        tokenizer_id: '/Users/dheerajmekala/Work/RL4LMs/models/gpt23_large_imdb/'
+        prompt_cost: 0.05
+        generation_cost: 0.05
