@@ -3,7 +3,7 @@ tokenizer:
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
-  new_tokens: [' <GPT3>', ' </GPT3>']
+#  new_tokens: [' <GPT3>', ' </GPT3>']
 
 reward_fn:
   id: learned_reward
@@ -29,7 +29,7 @@ alg:
   id: ppo
   args:
     n_steps: 128
-    batch_size: 32
+    batch_size: 2
     verbose: 1
     learning_rate: 0.000001
     n_epochs: 5
@@ -41,19 +41,20 @@ alg:
   cost_reward:
     prompt_cost: 0.05
     generation_cost: 0.05
-    cost_reward_coeff: 0.3
+    cost_reward_coeff: 1.0
 
   policy:
     id: causal_lm_actor_critic_policy
     args:
       model_name: '/data/dheeraj/GPT23/saved_models/gpt2_3_large_imdb/'
-      apply_model_parallel: True
+      apply_model_parallel: False
       generation_kwargs:
         do_sample: True
         min_length: 48
         max_new_tokens: 48
         use_big_model: True
         big_model_prompt: "Continue this text into a positive movie review.\n"
+        loss_for_big_model: False
 
 train_evaluation:
   eval_batch_size: 128
@@ -65,7 +66,7 @@ train_evaluation:
       args:
         model_name: lvwerra/distilbert-imdb
         label_ix: 1
-        batch_size: 100
+        batch_size: 64
     - id: causal_perplexity
       args:
         tokenizer_id: gpt2
@@ -80,3 +81,5 @@ train_evaluation:
         tokenizer_id: '/data/dheeraj/GPT23/saved_models/gpt2_3_large_imdb/'
         prompt_cost: 0.05
         generation_cost: 0.05
+        truncation_side: 'left'
+        max_prompt_length: 64
