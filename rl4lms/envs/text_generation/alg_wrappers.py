@@ -218,7 +218,8 @@ def wrap_onpolicy_alg(
                 if gen_output.action_masks is not None
                 else [None] * len(gen_output.step_wise_logprobs)
             )
-            gpt3_env_mask = torch.zeros(self.env.num_envs, dtype=torch.int32).to(gen_output.step_wise_actions[0].device)
+            gpt3_env_mask = torch.zeros(self.env.num_envs, dtype=torch.int32, requires_grad=False).to(
+                gen_output.step_wise_actions[0].device)
 
             for actions_tensor, _, action_mask in zip(
                 gen_output.step_wise_actions, gen_output.step_wise_logprobs, masks
