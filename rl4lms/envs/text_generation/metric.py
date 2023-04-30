@@ -208,7 +208,9 @@ class CostRewardMetric(BaseMetric):
         self,
         tokenizer_id: str,
         prompt_cost: float,
-        generation_cost: float
+        generation_cost: float,
+        truncation_side: str,
+        max_prompt_length: int
     ) -> None:
         super().__init__()
         self._tokenizer_id = tokenizer_id
@@ -225,6 +227,8 @@ class CostRewardMetric(BaseMetric):
         for i, n in enumerate(nums):
             tok_id = self.tokenizer(n)["input_ids"][0]
             self.num_tokenids_dict[tok_id] = i + 1
+        self.tokenizer.truncation_side = truncation_side
+        self.max_prompt_length = max_prompt_length
 
     def compute(
         self,
@@ -236,32 +240,35 @@ class CostRewardMetric(BaseMetric):
         split_name: str = None,
     ):
         cost_rewards = []
-        for g in generated_texts:
-            input_ids = self.tokenizer(g)["input_ids"]
-            prompt_len = 0
-            gen_len = 0
+        for ind, g in enumerate(generated_texts):
+            input_ids = self.tokenizer(g, max_length=self.max_prompt_length, truncation=True)["input_ids"]
+            prefix_len = len(
+                self.tokenizer(prompt_texts[ind], max_length=self.max_prompt_length, truncation=True)["input_ids"]
+            )
             num_calls = 0
             num_spl_tokens = 0
             i = 0
+            cost = 0
             while i < len(input_ids) - 4:
                 if input_ids[i] in self.tokenizer.all_special_ids:
                     num_spl_tokens += 1
                     i += 1
                 elif input_ids[i] == self.gpt3_startid and input_ids[i + 1] in self.num_tokenids_dict and input_ids[
                     i + 2] == self.arrow_tokenid:
+                    # the start of gpt3 tokens
                     temp_var = i + 3
                     while temp_var < len(input_ids):
                         if input_ids[temp_var] == self.gpt3_endid:
                             break
                         temp_var += 1
-                    gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
-                    prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                    gen_len = self.num_tokenids_dict[input_ids[i + 1]]
+                    prompt_len = prefix_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                    cost = cost + (self.prompt_cost * prompt_len) + (self.generation_cost * gen_len)
                     i = temp_var + 1
                     num_calls += 1
                 else:
                     i += 1
-            cost = 1 / ((self.prompt_cost * prompt_len) + (self.generation_cost * gen_len) + 1)
-            cost_rewards.append(cost)
+            cost_rewards.append(np.exp(-3 * cost / 15))
 
         metric_dict = {"avg_cost_reward": (cost_rewards, np.mean(cost_rewards))}
         return metric_dict

@@ -168,6 +168,19 @@ def wrap_onpolicy_alg(
                 tok_id = tokenizer(n)["input_ids"][0]
                 self.num_tokenids_dict[tok_id] = i + 1
 
+
+        def update_env_mask(self, inputs_tensor, actions_tensor, gpt3_env_mask):
+            if self.arrow_tokenid is None or self.gpt3_endid is None:
+                return gpt3_env_mask
+            return torch.logical_or(
+                torch.logical_and(
+                    gpt3_env_mask == 0, inputs_tensor[:, -1] == self.arrow_tokenid
+                ),
+                torch.logical_and(
+                    gpt3_env_mask == 1, actions_tensor != self.gpt3_endid)
+            )
+
+
         def generate_batch(
             self,
             rollout_buffer: DictRolloutBuffer,
@@ -205,6 +218,7 @@ def wrap_onpolicy_alg(
                 if gen_output.action_masks is not None
                 else [None] * len(gen_output.step_wise_logprobs)
             )
+            gpt3_env_mask = torch.zeros(self.env.num_envs, dtype=torch.int32).to(gen_output.step_wise_actions[0].device)
 
             for actions_tensor, _, action_mask in zip(
                 gen_output.step_wise_actions, gen_output.step_wise_logprobs, masks
@@ -216,6 +230,7 @@ def wrap_onpolicy_alg(
                 # evaluate actions with actions from rollout
                 with torch.no_grad():
                     obs_tensor = obs_as_tensor(current_obs, self.device)
+                    gpt3_env_mask = self.update_env_mask(obs_tensor["input_encoded_pt"], actions_tensor, gpt3_env_mask)
 
                     # get log probs (TBD: generalize this a bit)
                     policy_kwargs = self.get_policy_kwargs(
@@ -289,7 +304,7 @@ def wrap_onpolicy_alg(
                 # store episode wise transitions separately
                 for env_ix in range(self.env.num_envs):
                     # only if not terminated already
-                    if not ep_terminated[env_ix]:
+                    if not ep_terminated[env_ix] and (dones[env_ix] or not gpt3_env_mask[env_ix].item()):
                         transtion = TransitionInfo(
                             observation=unpacked_obs[env_ix],
                             action=actions[env_ix],
@@ -336,29 +351,30 @@ def wrap_onpolicy_alg(
             for env_ix in range(self.env.num_envs):
                 if dones[env_ix]:
                     input_ids = current_obs["input_encoded_pt"][env_ix]
-                    prompt_len = 0
-                    gen_len = 0
                     num_calls = 0
                     num_spl_tokens = 0
                     i = 0
+                    cost = 0
                     while i < len(input_ids) - 4:
                         if input_ids[i] in tokenizer.all_special_ids:
                             num_spl_tokens += 1
                             i += 1
                         elif input_ids[i] == self.gpt3_startid and input_ids[i + 1] in self.num_tokenids_dict and \
                                 input_ids[i + 2] == self.arrow_tokenid:
+                            # the start of gpt3 tokens
                             temp_var = i + 3
                             while temp_var < len(input_ids):
                                 if input_ids[temp_var] == self.gpt3_endid:
                                     break
                                 temp_var += 1
-                            gen_len = gen_len + self.num_tokenids_dict[input_ids[i + 1]]
-                            prompt_len = prompt_len + i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                            gen_len = self.num_tokenids_dict[input_ids[i + 1]]
+                            prompt_len = i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
+                            cost = cost + (self.prompt_cost * prompt_len) + (self.generation_cost * gen_len)
                             i = temp_var + 1
                             num_calls += 1
                         else:
                             i += 1
-                    cost_rewards[env_ix] = 1 / ((self.prompt_cost * prompt_len) + (self.generation_cost * gen_len) + 1)
+                    cost_rewards[env_ix] = np.exp(-3 * cost / 15)
                 else:
                     cost_rewards[env_ix] = 0
             return cost_rewards

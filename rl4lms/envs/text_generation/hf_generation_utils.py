@@ -896,6 +896,7 @@ class GenerationMixinWithRawScores:
         num_tokenids_dict: Optional[Dict] = None,
         big_model_prompt_ids: Optional[List] = None,
         tokenizer: Optional = None,
+        loss_for_big_model: Optional[bool] = False,
         length_penalty: Optional[float] = None,
         no_repeat_ngram_size: Optional[int] = None,
         encoder_no_repeat_ngram_size: Optional[int] = None,
@@ -1352,6 +1353,7 @@ class GenerationMixinWithRawScores:
                 num_tokenids_dict=num_tokenids_dict,
                 big_model_prompt_ids=big_model_prompt_ids,
                 tokenizer=tokenizer,
+                loss_for_big_model=loss_for_big_model,
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
@@ -1858,6 +1860,7 @@ class GenerationMixinWithRawScores:
         num_tokenids_dict: Optional[Dict] = None,
         big_model_prompt_ids: Optional[List] = None,
         tokenizer: Optional = None,
+        loss_for_big_model: Optional[bool] = False,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_scores: Optional[bool] = None,
@@ -2010,6 +2013,10 @@ class GenerationMixinWithRawScores:
         this_peer_finished = False  # used by synced_gpus only
         finished_in_big_model = False
         # auto-regressive generation
+        template_token_logits_raw = None
+        template_token_scores = None
+        template_attentions = None
+        template_hidden_states = None
         while True:
 
             if synced_gpus:
@@ -2030,59 +2037,86 @@ class GenerationMixinWithRawScores:
                                                   arrow_id, big_model_prompt_ids)
                 num_tokens_from_big_model = next_tokens.shape[-1]
                 for num_tok in range(num_tokens_from_big_model):
-                    # prepare model inputs
-                    model_inputs = self.prepare_inputs_for_generation(
-                        input_ids, **model_kwargs)
+                    # the call to big model returns a GPT3_END token at the end.
+                    if loss_for_big_model or num_tok == (num_tokens_from_big_model - 1):
+                        # prepare model inputs
+                        model_inputs = self.prepare_inputs_for_generation(
+                            input_ids, **model_kwargs)
 
-                    # forward pass to get next token
-                    outputs = self(
-                        **model_inputs,
-                        return_dict=True,
-                        output_attentions=output_attentions,
-                        output_hidden_states=output_hidden_states,
-                    )
-                    if synced_gpus and this_peer_finished:
-                        cur_len = cur_len + 1
-                        continue  # don't waste resources running the code we don't need
+                        # forward pass to get next token
+                        outputs = self(
+                            **model_inputs,
+                            return_dict=True,
+                            output_attentions=output_attentions,
+                            output_hidden_states=output_hidden_states,
+                        )
+                        if synced_gpus and this_peer_finished:
+                            cur_len = cur_len + 1
+                            continue  # don't waste resources running the code we don't need
 
-                    next_token_logits_raw = outputs.logits[:, -1, :].clone()
-                    next_token_logits = outputs.logits[:, -1, :]
+                        next_token_logits_raw = outputs.logits[:, -1, :].clone()
+                        next_token_logits = outputs.logits[:, -1, :]
 
-                    # pre-process distribution
-                    next_token_scores = logits_processor(
-                        input_ids, next_token_logits, model_inputs=model_inputs)
-                    next_token_scores = logits_warper(
-                        input_ids, next_token_scores)
-                    #if generated token is not in top-k, copy from raw logits.
-                    if math.isinf(next_token_scores[0][next_tokens[0, num_tok].item()]):
-                        next_token_scores[0][next_tokens[0, num_tok].item()] = next_token_logits_raw[0][
-                            next_tokens[0, num_tok].item()]
+                        # pre-process distribution
+                        next_token_scores = logits_processor(
+                            input_ids, next_token_logits, model_inputs=model_inputs)
+                        next_token_scores = logits_warper(
+                            input_ids, next_token_scores)
+                        #if generated token is not in top-k, copy from raw logits.
+                        if math.isinf(next_token_scores[0][next_tokens[0, num_tok].item()]):
+                            next_token_scores[0][next_tokens[0, num_tok].item()] = next_token_logits_raw[0][
+                                next_tokens[0, num_tok].item()]
 
-                    # Store scores, attentions and hidden_states when required
-                    if return_dict_in_generate:
-                        if output_scores:
-                            scores += ((next_token_logits_raw, next_token_scores),)
-                        if output_attentions:
-                            decoder_attentions += (
-                                (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
-                                    outputs.attentions,)
-                            )
-                            if self.config.is_encoder_decoder:
-                                cross_attentions += (outputs.cross_attentions,)
+                        # Store scores, attentions and hidden_states when required
+                        if return_dict_in_generate:
+                            if output_scores:
+                                scores += ((next_token_logits_raw, next_token_scores),)
+                            if output_attentions:
+                                decoder_attentions += (
+                                    (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
+                                        outputs.attentions,)
+                                )
+                                if self.config.is_encoder_decoder:
+                                    cross_attentions += (outputs.cross_attentions,)
 
-                        if output_hidden_states:
-                            decoder_hidden_states += (
-                                (outputs.decoder_hidden_states,)
-                                if self.config.is_encoder_decoder
-                                else (outputs.hidden_states,)
-                            )
+                            if output_hidden_states:
+                                decoder_hidden_states += (
+                                    (outputs.decoder_hidden_states,)
+                                    if self.config.is_encoder_decoder
+                                    else (outputs.hidden_states,)
+                                )
 
-                    # concatenate one by one generated token to input to obtain scores
-                    input_ids = torch.cat([input_ids, next_tokens[:, num_tok].unsqueeze(-1)], dim=-1)
-                    # update model inputs, and length for next step
-                    model_kwargs = self._update_model_kwargs_for_generation(
-                        outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
-                    )
+                        # concatenate one by one generated token to input to obtain scores
+                        input_ids = torch.cat([input_ids, next_tokens[:, num_tok].unsqueeze(-1)], dim=-1)
+                        # update model inputs, and length for next step
+                        model_kwargs = self._update_model_kwargs_for_generation(
+                            outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+                        )
+                    else:
+                        if return_dict_in_generate:
+                            if output_scores:
+                                assert template_token_logits_raw is not None
+                                assert template_token_scores is not None
+                                scores += ((template_token_logits_raw, template_token_scores),)
+                            if output_attentions:
+                                assert template_attentions is not None
+                                decoder_attentions += (
+                                     (template_attentions,)
+                                )
+
+                            if output_hidden_states:
+                                assert template_hidden_states is not None
+                                decoder_hidden_states += (
+                                    (template_hidden_states,)
+                                )
+
+                        # concatenate one by one generated token to input to obtain scores
+                        input_ids = torch.cat([input_ids, next_tokens[:, num_tok].unsqueeze(-1)], dim=-1)
+                        # update model inputs, and length for next step
+                        empty_dic = {}
+                        model_kwargs = self._update_model_kwargs_for_generation(
+                            empty_dic, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+                        )
                     cur_len = cur_len + 1
 
                     # stop when each sentence is finished, or if we exceed the maximum length
@@ -2125,11 +2159,20 @@ class GenerationMixinWithRawScores:
                 if return_dict_in_generate:
                     if output_scores:
                         scores += ((next_token_logits_raw, next_token_scores),)
+                        if template_token_logits_raw is None:
+                            template_token_logits_raw = torch.ones(next_token_logits_raw.shape).to(
+                                next_token_logits_raw.device)
+                        if template_token_scores is None:
+                            template_token_scores = torch.ones(next_token_scores.shape).to(
+                                next_token_scores.device)
                     if output_attentions:
                         decoder_attentions += (
                             (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (
                                 outputs.attentions,)
                         )
+                        if template_attentions is None:
+                            template_attentions = torch.ones(outputs.attentions.shape).to(
+                                outputs.attentions.device)
                         if self.config.is_encoder_decoder:
                             cross_attentions += (outputs.cross_attentions,)
 
@@ -2139,6 +2182,9 @@ class GenerationMixinWithRawScores:
                             if self.config.is_encoder_decoder
                             else (outputs.hidden_states,)
                         )
+                        if template_hidden_states is None:
+                            template_hidden_states = torch.ones(outputs.hidden_states.shape).to(
+                                outputs.hidden_states.device)
 
                 # sample
                 probs = nn.functional.softmax(next_token_scores, dim=-1)
