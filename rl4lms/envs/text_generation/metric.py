@@ -193,7 +193,11 @@ class GPT3NumTokensMetric(BaseMetric):
             call = 0
             for w in gen_text.strip().split():
                 if found:
-                    call += self.num_str_num[w]
+                    try:
+                        call += self.num_str_num[w]
+                    except:
+                        print("WRONG FORMAT GENERATED!", gen_text)
+                        print("*" * 80)
                     found = False
                 elif w == "<GPT3>":
                     found = True
