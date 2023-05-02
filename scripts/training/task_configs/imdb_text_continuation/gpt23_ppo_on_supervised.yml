@@ -41,7 +41,7 @@ alg:
   cost_reward:
     prompt_cost: 0.05
     generation_cost: 0.05
-    cost_reward_coeff: 1.0
+    cost_reward_coeff: 0.4
 
   policy:
     id: causal_lm_actor_critic_policy
@@ -55,6 +55,7 @@ alg:
         use_big_model: True
         big_model_prompt: "Continue this text into a positive movie review.\n"
         loss_for_big_model: False
+        value_eq_policy: True
 
 train_evaluation:
   eval_batch_size: 128
@@ -67,11 +68,11 @@ train_evaluation:
         model_name: lvwerra/distilbert-imdb
         label_ix: 1
         batch_size: 64
-#    - id: causal_perplexity
-#      args:
-#        tokenizer_id: gpt2
-#        stride: 512
-#        model_type: causal
+    - id: causal_perplexity
+      args:
+        tokenizer_id: gpt2
+        stride: 512
+        model_type: causal
     - id: diversity
       args: {}
     - id: gpt3_numtokens
