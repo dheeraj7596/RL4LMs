@@ -50,6 +50,7 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy, ActorCriticWarmStartMixin):
         prompt_truncation_side: str = "left",
         state_dict: Dict[str, Any] = None,
     ):
+        self.local_gen_kwargs = generation_kwargs
         super().__init__(
             observation_space,
             action_space,
@@ -71,7 +72,11 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy, ActorCriticWarmStartMixin):
             type(self._policy_model)
         )
 
-        self._value_model = AutoModelForCausalLM.from_pretrained(model_name)
+        if self.local_gen_kwargs.get("value_eq_policy", False):
+            self._value_model = self._policy_model
+        else:
+            self._value_model = AutoModelForCausalLM.from_pretrained(model_name)
+
         self._ref_model = deepcopy(self._policy_model).eval()
 
         self._value_head = nn.Linear(
