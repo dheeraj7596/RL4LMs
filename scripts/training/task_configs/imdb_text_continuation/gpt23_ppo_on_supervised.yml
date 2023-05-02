@@ -16,7 +16,7 @@ datapool:
   id: imdb
   args:
     prompt_prefix: "Continue this text into a positive movie review.\n"
-    prompt_suffix: " "
+    prompt_suffix: ""
 
 env:
   n_envs: 10
