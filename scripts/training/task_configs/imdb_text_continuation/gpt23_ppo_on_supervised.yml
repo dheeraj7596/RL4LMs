@@ -19,7 +19,7 @@ datapool:
     prompt_suffix: ""
 
 env:
-  n_envs: 10
+  n_envs: 8
   args:
     max_prompt_length: 64
     max_episode_length: 48
