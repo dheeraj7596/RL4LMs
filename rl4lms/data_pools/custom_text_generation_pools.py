@@ -261,11 +261,15 @@ class IMDB(TextGenPool):
             dataset_split = dataset["train"].shuffle()
             train_ratio = 0.8
             train_index = int(len(dataset_split) * train_ratio)
-            dataset_split = dataset_split[:train_index] if split == "train" else dataset_split[train_index:]
+            if split == "train":
+                dataset_split = dataset_split[:train_index]
+            else:
+                dataset_split = dataset_split[train_index: train_index + 1000]
+            # dataset_split = dataset_split[:train_index] if split == "train" else dataset_split[train_index:]
         else:
             dataset_split = dataset[split].shuffle()
             # dataset_split = dataset_split[:5000]
-            dataset_split = dataset_split[:2000]
+            dataset_split = dataset_split[:1000]
 
         samples = []
         for ix, text in enumerate(dataset_split["text"]):
