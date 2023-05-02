@@ -15,6 +15,7 @@ reward_fn:
 datapool:
   id: imdb
   args:
+    seed: 42
     prompt_prefix: "Continue this text into a positive movie review.\n"
     prompt_suffix: ""
 
