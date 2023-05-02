@@ -370,12 +370,14 @@ def wrap_onpolicy_alg(
                                 temp_var += 1
                             gen_len = self.num_tokenids_dict[input_ids[i + 1]]
                             prompt_len = i - num_spl_tokens - num_calls * 4  # every call has 4 special tokens which are not passed in the API call.
-                            cost = cost + (self.prompt_cost * prompt_len) + (self.generation_cost * gen_len)
+                            # cost = cost + (self.prompt_cost * prompt_len) + (self.generation_cost * gen_len)
+                            cost = cost + gen_len
                             i = temp_var + 1
                             num_calls += 1
                         else:
                             i += 1
-                    cost_rewards[env_ix] = np.exp(-3 * cost / 15)
+                    # cost_rewards[env_ix] = np.exp(-3 * cost / 15)
+                    cost_rewards[env_ix] = 1 - (cost / 10) ** 2
                 else:
                     cost_rewards[env_ix] = 0
             return cost_rewards
