@@ -68,11 +68,11 @@ train_evaluation:
         model_name: lvwerra/distilbert-imdb
         label_ix: 1
         batch_size: 64
-    - id: causal_perplexity
-      args:
-        tokenizer_id: gpt2
-        stride: 512
-        model_type: causal
+#    - id: causal_perplexity
+#      args:
+#        tokenizer_id: gpt2
+#        stride: 512
+#        model_type: causal
     - id: diversity
       args: {}
     - id: gpt3_numtokens
