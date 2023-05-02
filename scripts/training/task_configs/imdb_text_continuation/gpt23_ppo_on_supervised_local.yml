@@ -55,6 +55,7 @@ alg:
         use_big_model: True
         big_model_prompt: "Continue this text into a positive movie review.\n"
         loss_for_big_model: False
+        value_eq_policy: True
 
 train_evaluation:
   eval_batch_size: 2
