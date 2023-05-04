@@ -51,8 +51,7 @@ alg:
       apply_model_parallel: False
       generation_kwargs:
         do_sample: True
-        min_length: 10
-        max_new_tokens: 10
+        top_k: 50
         use_big_model: True
         big_model_prompt: "Continue this text into a positive movie review.\n"
         loss_for_big_model: False

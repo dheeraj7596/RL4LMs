@@ -53,6 +53,7 @@ alg:
         do_sample: True
         min_length: 48
         max_new_tokens: 48
+        top_k: 50
         use_big_model: True
         big_model_prompt: "Continue this text into a positive movie review.\n"
         loss_for_big_model: False
