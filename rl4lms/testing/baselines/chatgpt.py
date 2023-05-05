@@ -48,8 +48,31 @@ def generate_text(tokenizer, samples, max_prompt_length, num_tokens=48):
     return generated_texts
 
 
+def compute_and_dump_metrics(metrics, all_prompt_texts, all_generated_texts, all_ref_texts, out_path):
+    corpus_level_metrics = {}
+    sample_scores_by_metric = {}
+    if metrics is not None:
+        for metric in metrics:
+            metric_dict = metric.compute(
+                all_prompt_texts,
+                all_generated_texts,
+                all_ref_texts,
+            )
+
+            for metric_key, (sample_scores, corpus_score) in metric_dict.items():
+                if sample_scores is None:
+                    sample_scores = ["n/a"] * n_samples
+                corpus_level_metrics[metric_key] = corpus_score
+                sample_scores_by_metric[metric_key] = sample_scores
+    with open(os.path.join(out_path, "corpus_metrics.json"), "w") as f:
+        json.dump(corpus_level_metrics, f)
+    with open(os.path.join(out_path, "sample_metrics.json"), "w") as f:
+        json.dump(sample_scores_by_metric, f)
+
+
 if __name__ == "__main__":
     out_path = sys.argv[1]
+    os.makedirs(out_path, exist_ok=True)
     data_config = {
         "id": "imdb",
         "args": {"seed": 42, "prompt_prefix": "", "prompt_suffix": ""}
@@ -82,24 +105,4 @@ if __name__ == "__main__":
         all_ref_texts.extend(batch_ref_texts)
         all_prompt_texts.extend(batch_prompt_texts)
 
-    corpus_level_metrics = {}
-    sample_scores_by_metric = {}
-    if metrics is not None:
-        for metric in metrics:
-            metric_dict = metric.compute(
-                all_prompt_texts,
-                all_generated_texts,
-                all_ref_texts,
-            )
-
-            for metric_key, (sample_scores, corpus_score) in metric_dict.items():
-                if sample_scores is None:
-                    sample_scores = ["n/a"] * n_samples
-                corpus_level_metrics[metric_key] = corpus_score
-                sample_scores_by_metric[metric_key] = sample_scores
-
-    with open(os.path.join(out_path, "corpus_metrics.json"), "w") as f:
-        json.dump(corpus_level_metrics, f)
-
-    with open(os.path.join(out_path, "sample_metrics.json"), "w") as f:
-        json.dump(sample_scores_by_metric, f)
+    compute_and_dump_metrics(metrics, all_prompt_texts, all_generated_texts, all_ref_texts, out_path)
