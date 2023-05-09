@@ -23,38 +23,32 @@ https://huggingface.co/models?filter=text-generation
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
 import argparse
-import pickle
 import pandas as pd
 import logging
-import math
 import os
-import random
-from itertools import chain
-from pathlib import Path
 
 import datasets
-import torch
-from datasets import load_dataset
-from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
 
 import transformers
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator
 from huggingface_hub import Repository
+from tqdm import tqdm
 from transformers import (
     CONFIG_MAPPING,
     MODEL_MAPPING,
-    AdamW,
     AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
     SchedulerType,
-    default_data_collator,
-    get_scheduler,
     set_seed,
 )
 # from transformers.file_utils import get_full_repo_name
 from transformers.utils.versions import require_version
+
+from rl4lms.envs.text_generation.evaluation_utils import get_batch
+from rl4lms.envs.text_generation.registry import MetricRegistry
+from rl4lms.envs.text_generation.training_utils import build_datapool
+from rl4lms.testing.baselines.chatgpt import compute_and_dump_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -64,103 +58,35 @@ MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
-def generate(tokenizer, model, q_str, a_str, strategy, num_tries=5, batch_size=150):
+def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs):
     model.eval()
-    start_question_tag = "question :"
-    end_question_tag = "\n"
-    start_answer_tag = "answer :"
-    end_answer_tag = "\n"
-    start_context_tag = "context :"
-
-    text = start_question_tag + " " + q_str + " " + end_question_tag + " " + \
-           start_answer_tag + " " + a_str + " " + end_answer_tag + " " + start_context_tag
-
-    encoded_dict = tokenizer.encode_plus(text, return_tensors='pt')
-    ids = encoded_dict['input_ids'].to(device='cuda')
-
-    assert strategy in ["topk", "topp"]
-    if num_tries <= batch_size:
-        num_samples_list = [num_tries]
-    else:
-        its = int(num_tries / batch_size)
-        remainder = num_tries % batch_size
-        if remainder == 0:
-            num_samples_list = [batch_size] * its
-        else:
-            num_samples_list = [batch_size] * its + [remainder]
-    try:
-        if strategy == "topk":
-            sample_outputs = []
-            for n in num_samples_list:
-                temp = model.generate(
-                    input_ids=ids,
-                    do_sample=True,
-                    top_k=20,
-                    max_length=200,
-                    num_return_sequences=n
-                )
-                sample_outputs += temp
-        elif strategy == "topp":
-            sample_outputs = []
-            for n in num_samples_list:
-                temp = model.generate(
-                    input_ids=ids,
-                    do_sample=True,
-                    top_p=0.95,
-                    max_length=200,
-                    num_return_sequences=n
-                )
-                sample_outputs += temp
-    except Exception as e:
-        print(e)
-        return []
-
+    prompt = """Continue this text into a positive movie review.\n{source}"""
+    inputs = [prompt.format_map({"source": sample.prompt_or_input_text}) for sample in batch]
+    ids = tokenizer(
+        inputs,
+        padding="max_length",
+        max_length=max_prompt_length,
+        return_tensors="pt",
+        truncation=True,
+    )["input_ids"]
+    sample_outputs = model.generate(
+        input_ids=ids,
+        **generation_kwargs
+    )
     ans = []
     for t in sample_outputs:
-        whole_part = tokenizer.decode(t)
-        ans.append(whole_part)
-
+        gen_text = tokenizer.decode(t[max_prompt_length:])
+        ans.append(gen_text)
     return ans
-
-
-def compare(gen_contexts, answers):
-    length = len(gen_contexts)
-    assert len(gen_contexts) == len(answers)
-    anals = []
-    for i in range(length):
-        c = gen_contexts[i]
-        print(c)
-        print("*" * 80)
-        a = answers[i]
-        context = c.split("context :")[1]
-        if a in context:
-            anals.append(1)
-        else:
-            anals.append(0)
-    return sum(anals) / length
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Finetune a transformers model on a causal language modeling task")
     parser.add_argument(
-        "--strategy",
-        type=str,
-        default=None,
-        required=True,
-        help="Decoding strategy",
-    )
-    parser.add_argument(
         "--num_tries",
         type=int,
         default=1,
         help="Number of sequences to be generated for each Q&A",
-    )
-    parser.add_argument(
-        "--dataset_name",
-        type=str,
-        required=True,
-        default=None,
-        help="The name of the dataset to use (via the datasets library).",
     )
     parser.add_argument(
         "--dataset_config_name",
@@ -301,85 +227,6 @@ def parse_args():
     return args
 
 
-def generation_handler(dataset_name, tokenizer, model, strategy, num_tries):
-    contexts = []
-    labels = []
-
-    assert dataset_name in ["sst", "agnews", "imdb", "nyt-coarse", "yahoo", "yelp"]
-
-    if dataset_name == "sst":
-        answers = ["positive", "negative"]
-        questions = ["is this sentence positive or negative?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            if a == answers[0]:
-                labels += ["positive"] * num_tries
-            else:
-                labels += ["negative"] * num_tries
-    elif dataset_name == "agnews":
-        answers = ['sports', 'business', 'technology', 'politics']
-        questions = ["what is this document about?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            labels += [a] * args.num_tries
-    elif dataset_name == "imdb":
-        answers = ["good", "bad"]
-        questions = ["is this movie good or bad?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            if a == answers[0]:
-                labels += ["positive"] * args.num_tries
-            else:
-                labels += ["negative"] * args.num_tries
-    elif dataset_name == "nyt-coarse":
-        answers = ["arts", "business", "politics", "science", "sports"]
-        questions = ["what is this document about?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            labels += [a] * args.num_tries
-    elif dataset_name == "yahoo":
-        answers = [
-            "society",
-            "science",
-            "health",
-            "education",
-            "computer",
-            "sports",
-            "business",
-            "entertainment",
-            "relationship",
-            "politics"
-        ]
-        questions = ["what is this document about?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            labels += [a] * args.num_tries
-    elif dataset_name == "yelp":
-        answers = ["awful", "bad", "fine", "good", "excellent"]
-        questions = ["how is the service?"] * len(answers)
-        for q, a in zip(questions, answers):
-            temp_contexts = generate(tokenizer, model, q, a, strategy=strategy, num_tries=num_tries)
-            contexts += temp_contexts
-            if a == answers[0]:
-                labels += [1] * args.num_tries
-            elif a == answers[1]:
-                labels += [2] * args.num_tries
-            elif a == answers[2]:
-                labels += [3] * args.num_tries
-            elif a == answers[3]:
-                labels += [4] * args.num_tries
-            elif a == answers[4]:
-                labels += [5] * args.num_tries
-
-    df = pd.DataFrame.from_dict({"generated_context": contexts, "label": labels})
-    return df
-
-
 if __name__ == "__main__":
     args = parse_args()
 
@@ -406,6 +253,28 @@ if __name__ == "__main__":
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
+
+    data_config = {
+        "id": "imdb",
+        "args": {"seed": 42, "prompt_prefix": "", "prompt_suffix": ""}
+    }
+    batch_size = 128
+    max_prompt_length = 64
+    metric_configs = [
+        {"id": "learned_reward", "args": {"model_name": "lvwerra/distilbert-imdb", "label_ix": 1, "batch_size": 64}},
+        {"id": "diversity", "args": {}},
+    ]
+    generation_kwargs = {
+        "do_sample": True,
+        "min_length": 48,
+        "max_new_tokens": 48,
+        "top_k": 50
+    }
+
+    metrics = [MetricRegistry.get(metric_config["id"], metric_config.get("args", {}))
+               for metric_config in metric_configs]
+    samples_by_split = build_datapool(data_config)
+    samples = samples_by_split["test"]
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -444,6 +313,8 @@ if __name__ == "__main__":
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
+    tokenizer.truncation_side = "left"
+    tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
     if args.model_name_or_path:
@@ -459,6 +330,17 @@ if __name__ == "__main__":
     model.to(device='cuda')
     model.resize_token_embeddings(len(tokenizer))
 
-    df = generation_handler(args.dataset_name, tokenizer, model, strategy=args.strategy, num_tries=args.num_tries)
-    df.to_csv(os.path.join(args.output_dir, "df_gen_" + args.strategy + "_" + str(args.num_tries) + "_sampling.csv"),
-              index=False)
+    all_generated_texts = []
+    all_ref_texts = []
+    all_prompt_texts = []
+    for batch in tqdm(list(get_batch(samples, batch_size)), desc="Evaluating"):
+        batch_generated_texts = generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
+        batch_ref_texts = [sample.references for sample in batch]
+        batch_prompt_texts = [sample.prompt_or_input_text for sample in batch]
+        all_generated_texts.extend(batch_generated_texts)
+        all_ref_texts.extend(batch_ref_texts)
+        all_prompt_texts.extend(batch_prompt_texts)
+
+    compute_and_dump_metrics(metrics, all_prompt_texts, all_generated_texts, all_ref_texts, args.output_dir)
+    dic_df = pd.DataFrame.from_dict({"prompt": all_prompt_texts, "gen": all_generated_texts, "ref": all_ref_texts})
+    dic_df.to_csv(os.path.join(args.output_dir, "out.csv"), index=False)

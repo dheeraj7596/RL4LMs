@@ -17,7 +17,10 @@ import copy
 import math
 import openai
 import os
-openai.api_key = os.environ["OPENAI_API_KEY"]
+try:
+    openai.api_key = os.environ["OPENAI_API_KEY"]
+except:
+    print("No OPENAI key set")
 
 from ratelimiter import RateLimiter
 
