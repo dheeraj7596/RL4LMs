@@ -3,6 +3,7 @@ import sys
 import openai
 import os
 
+import pandas as pd
 from ratelimiter import RateLimiter
 from rl4lms.envs.text_generation.registry import MetricRegistry
 from rl4lms.envs.text_generation.training_utils import build_datapool
@@ -106,3 +107,5 @@ if __name__ == "__main__":
         all_prompt_texts.extend(batch_prompt_texts)
 
     compute_and_dump_metrics(metrics, all_prompt_texts, all_generated_texts, all_ref_texts, out_path)
+    dic_df = pd.DataFrame.from_dict({"prompt": all_prompt_texts, "gen": all_generated_texts, "ref": all_ref_texts})
+    dic_df.to_csv(os.path.join(out_path, "out.csv"), index=False)
