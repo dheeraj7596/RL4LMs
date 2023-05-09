@@ -68,7 +68,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
         max_length=max_prompt_length,
         return_tensors="pt",
         truncation=True,
-    )["input_ids"]
+    )["input_ids"].to("cuda")
     sample_outputs = model.generate(
         input_ids=ids,
         **generation_kwargs
