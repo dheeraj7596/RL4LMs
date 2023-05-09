@@ -49,6 +49,7 @@ def generate_text(tokenizer, samples, max_prompt_length, num_tokens=48):
 
 
 def compute_and_dump_metrics(metrics, all_prompt_texts, all_generated_texts, all_ref_texts, out_path):
+    n_samples = len(all_generated_texts)
     corpus_level_metrics = {}
     sample_scores_by_metric = {}
     if metrics is not None:
@@ -96,7 +97,6 @@ if __name__ == "__main__":
     all_generated_texts = []
     all_ref_texts = []
     all_prompt_texts = []
-    n_samples = len(samples)
     for batch in tqdm(list(get_batch(samples, batch_size)), desc="Evaluating"):
         batch_generated_texts = generate_text(tokenizer, batch, max_prompt_length)
         batch_ref_texts = [sample.references for sample in batch]
