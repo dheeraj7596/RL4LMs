@@ -23,11 +23,15 @@ https://huggingface.co/models?filter=text-generation
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
 import argparse
+import copy
+import random
+
 import pandas as pd
 import logging
 import os
 
 import datasets
+import torch
 
 import transformers
 from accelerate import Accelerator
@@ -48,7 +52,7 @@ from transformers.utils.versions import require_version
 from rl4lms.envs.text_generation.evaluation_utils import get_batch
 from rl4lms.envs.text_generation.registry import MetricRegistry
 from rl4lms.envs.text_generation.training_utils import build_datapool
-from rl4lms.testing.baselines.chatgpt import compute_and_dump_metrics
+from rl4lms.testing.baselines.chatgpt import compute_and_dump_metrics, call_chatgpt
 
 logger = logging.getLogger(__name__)
 
@@ -61,22 +65,74 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs):
     model.eval()
     prompt = """Continue this text into a positive movie review.\n{source}"""
-    inputs = [prompt.format_map({"source": sample.prompt_or_input_text}) for sample in batch]
-    ids = tokenizer(
-        inputs,
-        padding="max_length",
-        max_length=max_prompt_length,
-        return_tensors="pt",
-        truncation=True,
-    )["input_ids"].to("cuda")
-    sample_outputs = model.generate(
-        input_ids=ids,
-        **generation_kwargs
-    )
     ans = []
-    for t in sample_outputs:
-        gen_text = tokenizer.decode(t[max_prompt_length:])
-        ans.append(gen_text)
+    space_tensor = tokenizer(" ", return_tensors="pt")["input_ids"].to("cuda")
+    for sample in batch:
+        ind = random.randint(0, generation_kwargs["max_new_tokens"])
+        input = prompt.format_map({"source": sample.prompt_or_input_text})
+        if ind != 0:
+            # generate using small model for few tokens
+            ids = tokenizer(
+                input,
+                padding="max_length",
+                max_length=max_prompt_length,
+                return_tensors="pt",
+                truncation=True,
+            )["input_ids"].to("cuda")
+            temp_gen_kwargs = copy.deepcopy(generation_kwargs)
+            temp_gen_kwargs["max_new_tokens"] = ind
+            temp_gen_kwargs["min_length"] = ind
+            sample_outputs = model.generate(
+                input_ids=ids,
+                **temp_gen_kwargs
+            )
+            gen_text = tokenizer.decode(sample_outputs[0])
+
+            # call big model for 10 tokens
+            prompt_text = prompt.format_map({"source": gen_text})
+            out = call_chatgpt(prompt_text, num_tokens=min(generation_kwargs["max_new_tokens"] - ind, 10))
+
+            # generate using the small model
+            ids = torch.cat([sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
+                            dim=-1)
+            temp_gen_kwargs = copy.deepcopy(generation_kwargs)
+            temp_gen_kwargs["max_new_tokens"] = generation_kwargs["max_new_tokens"] - ind - 10
+            temp_gen_kwargs["min_length"] = generation_kwargs["max_new_tokens"] - ind - 10
+            sample_outputs = model.generate(
+                input_ids=ids,
+                **temp_gen_kwargs
+            )
+            gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
+            ans.append(gen_text)
+        else:
+            # call big model for 10 tokens
+            encodings = tokenizer(
+                input,
+                max_length=max_prompt_length,
+                truncation=True,
+            )
+            input_truncs = tokenizer.decode(encodings["input_ids"], skip_special_tokens=True)
+            prompt_text = prompt.format_map({"source": input_truncs})
+            out = call_chatgpt(prompt_text, num_tokens=10)
+
+            # generate using the small model
+            input = prompt.format_map({"source": sample.prompt_or_input_text + " " + out})
+            ids = tokenizer(
+                input,
+                padding="max_length",
+                max_length=max_prompt_length + 10,
+                return_tensors="pt",
+                truncation=True,
+            )["input_ids"].to("cuda")
+            temp_gen_kwargs = copy.deepcopy(generation_kwargs)
+            temp_gen_kwargs["max_new_tokens"] = generation_kwargs["max_new_tokens"] - 10
+            temp_gen_kwargs["min_length"] = generation_kwargs["max_new_tokens"] - 10
+            sample_outputs = model.generate(
+                input_ids=ids,
+                **temp_gen_kwargs
+            )
+            gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
+            ans.append(gen_text)
     return ans
 
 
