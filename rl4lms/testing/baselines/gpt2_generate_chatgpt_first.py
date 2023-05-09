@@ -45,6 +45,7 @@ from transformers import (
 # from transformers.file_utils import get_full_repo_name
 from transformers.utils.versions import require_version
 
+from rl4lms.data_pools.text_generation_pool import Sample
 from rl4lms.envs.text_generation.evaluation_utils import get_batch
 from rl4lms.envs.text_generation.registry import MetricRegistry
 from rl4lms.envs.text_generation.training_utils import build_datapool
@@ -102,6 +103,9 @@ def parse_args():
     )
     parser.add_argument(
         "--analyze_file", type=str, default=None, help="A csv or a json file containing the analysis data."
+    )
+    parser.add_argument(
+        "--chatgpt_gen_file", type=str, required=True, help="A csv or a json file containing the training data."
     )
     parser.add_argument(
         "--validation_split_percentage",
@@ -227,6 +231,29 @@ def parse_args():
     return args
 
 
+def concatenate_chatgpt_gen(tokenizer, chatgpt_df, samples):
+    old_trunc_side = tokenizer.truncation_side
+    old_padding_side = tokenizer.padding_side
+    tokenizer.truncation_side = "right"
+    tokenizer.padding_side = "right"
+    new_samples = []
+    for i, gen in enumerate(list(chatgpt_df["gen"])):
+        chatgpt_gen = tokenizer.decode(
+            tokenizer(gen, padding="max_length", max_length=10, truncation=True)["input_ids"]
+        )
+        new_samples.append(
+            Sample(
+                id=samples[i].id,
+                prompt_or_input_text=samples[i].prompt_or_input_text + " " + chatgpt_gen,
+                references=samples[i].references,
+                meta_data=samples[i].meta_data
+            )
+        )
+    tokenizer.truncation_side = old_trunc_side
+    tokenizer.padding_side = old_padding_side
+    return new_samples
+
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -275,6 +302,7 @@ if __name__ == "__main__":
                for metric_config in metric_configs]
     samples_by_split = build_datapool(data_config)
     samples = samples_by_split["test"]
+    chatgpt_df = pd.read_csv(args.chatgpt_gen_file)
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -317,6 +345,8 @@ if __name__ == "__main__":
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
+    new_samples = concatenate_chatgpt_gen(tokenizer, chatgpt_df, samples)
+
     if args.model_name_or_path:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
@@ -333,7 +363,7 @@ if __name__ == "__main__":
     all_generated_texts = []
     all_ref_texts = []
     all_prompt_texts = []
-    for batch in tqdm(list(get_batch(samples, batch_size)), desc="Evaluating"):
+    for batch in tqdm(list(get_batch(new_samples, batch_size)), desc="Evaluating"):
         batch_generated_texts = generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
         batch_ref_texts = [sample.references for sample in batch]
         batch_prompt_texts = [sample.prompt_or_input_text for sample in batch]
