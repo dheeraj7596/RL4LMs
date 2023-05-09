@@ -238,9 +238,14 @@ def concatenate_chatgpt_gen(tokenizer, chatgpt_df, samples):
     tokenizer.padding_side = "right"
     new_samples = []
     for i, gen in enumerate(list(chatgpt_df["gen"])):
-        chatgpt_gen = tokenizer.decode(
-            tokenizer(gen, padding="max_length", max_length=10, truncation=True)["input_ids"]
-        )
+        print("Finished concatenating", i)
+        try:
+            chatgpt_gen = tokenizer.decode(
+                tokenizer(gen, padding="max_length", max_length=10, truncation=True)["input_ids"]
+            )
+        except Exception as e:
+            chatgpt_gen = ""
+            print("EXCEPTION WHILE CONCATENATING")
         new_samples.append(
             Sample(
                 id=samples[i].id,
