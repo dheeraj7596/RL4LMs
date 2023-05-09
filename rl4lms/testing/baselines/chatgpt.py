@@ -11,7 +11,7 @@ from transformers import AutoTokenizer
 from tqdm import tqdm
 
 
-@RateLimiter(max_calls=700, period=60)
+@RateLimiter(max_calls=800, period=60)
 def call_chatgpt(input, num_tokens):
     try:
         completion = openai.ChatCompletion.create(model="gpt-3.5-turbo",
