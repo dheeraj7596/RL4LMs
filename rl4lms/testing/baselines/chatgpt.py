@@ -79,7 +79,7 @@ if __name__ == "__main__":
         "id": "imdb",
         "args": {"seed": 42, "prompt_prefix": "", "prompt_suffix": ""}
     }
-    batch_size = 128
+    batch_size = 1
     max_prompt_length = 64
     metric_configs = [
         {"id": "learned_reward", "args": {"model_name": "lvwerra/distilbert-imdb", "label_ix": 1, "batch_size": 64}},
