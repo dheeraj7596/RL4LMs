@@ -90,19 +90,28 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
 
             # call big model for 10 tokens
             prompt_text = prompt.format_map({"source": gen_text})
-            out = call_chatgpt(prompt_text, num_tokens=min(generation_kwargs["max_new_tokens"] - ind, 10))
+            num_new_tokens = min(generation_kwargs["max_new_tokens"] - ind, 10)
+            out = call_chatgpt(prompt_text, num_tokens=num_new_tokens)
 
             # generate using the small model
-            ids = torch.cat([sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
-                            dim=-1)
-            temp_gen_kwargs = copy.deepcopy(generation_kwargs)
-            temp_gen_kwargs["max_new_tokens"] = generation_kwargs["max_new_tokens"] - ind - 10
-            temp_gen_kwargs["min_length"] = generation_kwargs["max_new_tokens"] - ind - 10
-            sample_outputs = model.generate(
-                input_ids=ids,
-                **temp_gen_kwargs
-            )
-            gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
+            num_tokens_left = generation_kwargs["max_new_tokens"] - ind - num_new_tokens
+            if num_tokens_left <= 0:
+                ids = torch.cat(
+                    [sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
+                    dim=-1).to(torch.long)
+                gen_text = tokenizer.decode(ids[0][max_prompt_length:])
+            else:
+                ids = torch.cat(
+                    [sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
+                    dim=-1).to(torch.long)
+                temp_gen_kwargs = copy.deepcopy(generation_kwargs)
+                temp_gen_kwargs["max_new_tokens"] = num_tokens_left
+                temp_gen_kwargs["min_length"] = num_tokens_left
+                sample_outputs = model.generate(
+                    input_ids=ids,
+                    **temp_gen_kwargs
+                )
+                gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
             ans.append(gen_text)
         else:
             # call big model for 10 tokens
