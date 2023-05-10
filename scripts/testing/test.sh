@@ -2,7 +2,7 @@ gpu=$1
 openai_api_key=$2
 
 #chatgpt
-CUDA_VISIBLE_DEVICES=${gpu} OPENAI_API_KEY=${openai_api_key} python3 rl4lms/testing/baselines/chatgpt.py --output_dir output/imdb_test_1000/chatgpt/
+CUDA_VISIBLE_DEVICES=${gpu} OPENAI_API_KEY=${openai_api_key} python3 rl4lms/testing/baselines/chatgpt.py output/imdb_test_1000/chatgpt
 #gpt2-large pret
 CUDA_VISIBLE_DEVICES=${gpu} python3 rl4lms/testing/baselines/gpt2_generate.py --model_name_or_path gpt2-large --output_dir output/imdb_test_1000/gpt2-large-pret
 #gpt2-large ft
