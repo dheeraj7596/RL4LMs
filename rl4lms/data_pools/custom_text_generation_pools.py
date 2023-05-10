@@ -268,9 +268,15 @@ class IMDB(TextGenPool):
             # dataset_split = dataset_split[:train_index] if split == "train" else dataset_split[train_index:]
         else:
             dataset_split = dataset[split]
-            # dataset_split = dataset[split].shuffle(seed)
-            # dataset_split = dataset_split[:5000]
-            dataset_split = dataset_split[:1000]
+            # dataset_split = dataset[split].shuffle(seed)[:5000]
+            label_to_ind = {}
+            for ix, label in enumerate(list(dataset_split["label"])):
+                try:
+                    label_to_ind[label].append(ix)
+                except:
+                    label_to_ind[label] = [ix]
+            dataset_split = dataset_split[label_to_ind[0][:500] + label_to_ind[1][:500]]
+
 
         samples = []
         for ix, text in enumerate(dataset_split["text"]):
@@ -614,11 +620,11 @@ class DailyDialog(TextGenPool):
                                                   item["emotion"],
                                                   item["act"]):
                 if len(contexts) >= context_size:
-                    context = DailyDialog.EOU_TOKEN.join(contexts[-context_size:]) 
+                    context = DailyDialog.EOU_TOKEN.join(contexts[-context_size:])
                     context += " " + DailyDialog.EOU_TOKEN
                     target = utterance + DailyDialog.EOU_TOKEN
-                    sample = Sample(id=utterance_id, 
-                                    prompt_or_input_text=context, 
+                    sample = Sample(id=utterance_id,
+                                    prompt_or_input_text=context,
                                     references=[target],
                                     meta_data={
                                         "emotion": [emotion],
@@ -637,4 +643,3 @@ if __name__ == "__main__":
     import numpy as np
     dp = DailyDialog.prepare("val", 5)
     print(dp[0])
-    
