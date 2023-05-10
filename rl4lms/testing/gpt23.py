@@ -46,6 +46,7 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 from rl4lms.envs.text_generation.evaluation_utils import get_batch
+from rl4lms.envs.text_generation.hf_generation_utils import override_generation_routines
 from rl4lms.envs.text_generation.registry import MetricRegistry
 from rl4lms.envs.text_generation.training_utils import build_datapool
 from rl4lms.testing.baselines.chatgpt import compute_and_dump_metrics
@@ -227,6 +228,31 @@ def parse_args():
     return args
 
 
+def update_config_if_use_big_model(generation_kwargs, tokenizer):
+    try:
+        if generation_kwargs["use_big_model"] is True:
+            GPT3_START_TOKEN = ' <GPT3>'
+            GPT3_END_TOKEN = ' </GPT3>'
+            gpt3_startid = tokenizer(GPT3_START_TOKEN)["input_ids"][0]
+            gpt3_endid = tokenizer(GPT3_END_TOKEN)["input_ids"][0]
+            big_model_prompt_ids = tokenizer(generation_kwargs["big_model_prompt"])["input_ids"]
+            arrow_tokenid = 4613
+            num_tokenids_dict = {}
+            nums = [" one", " two", " three", " four", " five", " six", " seven", " eight", " nine", " ten"]
+            for i, n in enumerate(nums):
+                tok_id = tokenizer(n)["input_ids"][0]
+                num_tokenids_dict[tok_id] = i + 1
+            generation_kwargs["gpt3_start_id"] = gpt3_startid
+            generation_kwargs["gpt3_end_id"] = gpt3_endid
+            generation_kwargs["arrow_id"] = arrow_tokenid
+            generation_kwargs["num_tokenids_dict"] = num_tokenids_dict
+            generation_kwargs["tokenizer"] = tokenizer
+            generation_kwargs["big_model_prompt_ids"] = big_model_prompt_ids
+    except Exception as e:
+        print("******Exception while updating*******", e)
+    return generation_kwargs
+
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -258,7 +284,7 @@ if __name__ == "__main__":
         "id": "imdb",
         "args": {"seed": 42, "prompt_prefix": "", "prompt_suffix": ""}
     }
-    batch_size = 128
+    batch_size = 1
     max_prompt_length = 64
     metric_configs = [
         {"id": "learned_reward", "args": {"model_name": "lvwerra/distilbert-imdb", "label_ix": 1, "batch_size": 64}},
@@ -268,7 +294,10 @@ if __name__ == "__main__":
         "do_sample": True,
         "min_length": 48,
         "max_new_tokens": 48,
-        "top_k": 50
+        "top_k": 50,
+        "use_big_model": True,
+        "big_model_prompt": "Continue this text into a positive movie review.\n",
+        "loss_for_big_model": False
     }
 
     metrics = [MetricRegistry.get(metric_config["id"], metric_config.get("args", {}))
@@ -317,6 +346,8 @@ if __name__ == "__main__":
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
+    generation_kwargs = update_config_if_use_big_model(generation_kwargs, tokenizer)
+
     if args.model_name_or_path:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
@@ -327,6 +358,7 @@ if __name__ == "__main__":
         logger.info("Training new model from scratch")
         model = AutoModelForCausalLM.from_config(config)
 
+    model.__class__ = override_generation_routines(type(model))
     model.to(device='cuda')
     model.resize_token_embeddings(len(tokenizer))
 
