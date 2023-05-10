@@ -68,7 +68,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
     ans = []
     space_tensor = tokenizer(" ", return_tensors="pt")["input_ids"].to("cuda")
     for sample in batch:
-        ind = random.randint(0, generation_kwargs["max_new_tokens"])
+        ind = random.randint(0, generation_kwargs["max_new_tokens"] - 1)
         input = prompt.format_map({"source": sample.prompt_or_input_text})
         if ind != 0:
             # generate using small model for few tokens
