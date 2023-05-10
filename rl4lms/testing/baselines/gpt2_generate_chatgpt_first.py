@@ -76,7 +76,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
     )
     ans = []
     for t in sample_outputs:
-        gen_text = tokenizer.decode(t[max_prompt_length:])
+        gen_text = tokenizer.decode(t[max_prompt_length:], skip_special_tokens=True)
         ans.append(gen_text)
     return ans
 
@@ -241,7 +241,8 @@ def concatenate_chatgpt_gen(tokenizer, chatgpt_df, samples):
         print("Finished concatenating", i)
         try:
             chatgpt_gen = tokenizer.decode(
-                tokenizer(gen, padding="max_length", max_length=10, truncation=True)["input_ids"]
+                tokenizer(gen, padding="max_length", max_length=10, truncation=True)["input_ids"],
+                skip_special_tokens=True
             )
         except Exception as e:
             chatgpt_gen = ""

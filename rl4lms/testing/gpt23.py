@@ -76,7 +76,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
     )
     ans = []
     for t in sample_outputs:
-        gen_text = tokenizer.decode(t[max_prompt_length:])
+        gen_text = tokenizer.decode(t[max_prompt_length:], skip_special_tokens=True)
         ans.append(gen_text)
     return ans
 

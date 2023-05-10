@@ -86,7 +86,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
                 input_ids=ids,
                 **temp_gen_kwargs
             )
-            gen_text = tokenizer.decode(sample_outputs[0])
+            gen_text = tokenizer.decode(sample_outputs[0], skip_special_tokens=True)
 
             # call big model for 10 tokens
             prompt_text = prompt.format_map({"source": gen_text})
@@ -99,7 +99,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
                 ids = torch.cat(
                     [sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
                     dim=-1).to(torch.long)
-                gen_text = tokenizer.decode(ids[0][max_prompt_length:])
+                gen_text = tokenizer.decode(ids[0][max_prompt_length:], skip_special_tokens=True)
             else:
                 ids = torch.cat(
                     [sample_outputs, space_tensor, tokenizer(out, return_tensors="pt")["input_ids"].to("cuda")],
@@ -111,7 +111,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
                     input_ids=ids,
                     **temp_gen_kwargs
                 )
-                gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
+                gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:], skip_special_tokens=True)
             ans.append(gen_text)
         else:
             # call big model for 10 tokens
@@ -140,7 +140,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
                 input_ids=ids,
                 **temp_gen_kwargs
             )
-            gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:])
+            gen_text = tokenizer.decode(sample_outputs[0][max_prompt_length:], skip_special_tokens=True)
             ans.append(gen_text)
     return ans
 
@@ -323,7 +323,7 @@ if __name__ == "__main__":
         "id": "imdb",
         "args": {"seed": 42, "prompt_prefix": "", "prompt_suffix": ""}
     }
-    batch_size = 128
+    batch_size = 1
     max_prompt_length = 64
     metric_configs = [
         {"id": "learned_reward", "args": {"model_name": "lvwerra/distilbert-imdb", "label_ix": 1, "batch_size": 64}},
