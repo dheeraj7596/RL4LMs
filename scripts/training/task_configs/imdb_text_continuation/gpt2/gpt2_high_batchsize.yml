@@ -47,6 +47,7 @@ alg:
         max_new_tokens: 48
         top_k: 50
         use_big_model: False
+        value_eq_policy: False
 
 train_evaluation:
   eval_batch_size: 128
