@@ -1,5 +1,5 @@
 tokenizer:
-  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt'
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt_64'
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
@@ -41,7 +41,7 @@ alg:
   policy:
     id: causal_lm_actor_critic_policy
     args:
-      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt'
+      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt_64'
       apply_model_parallel: False
       generation_kwargs:
         do_sample: True
