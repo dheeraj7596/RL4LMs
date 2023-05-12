@@ -1,5 +1,5 @@
 tokenizer:
-  model_name: lvwerra/gpt2-imdb
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft'
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
@@ -15,6 +15,8 @@ datapool:
   id: imdb
   args:
     seed: 42
+    prompt_prefix: "Continue this text into a positive movie review.\n"
+    prompt_suffix: ""
 
 env:
   n_envs: 8
@@ -39,7 +41,7 @@ alg:
   policy:
     id: causal_lm_actor_critic_policy
     args:
-      model_name: rajkumarrrk/gpt2-fine-tuned-on-imdb-positive-reviews
+      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft'
       apply_model_parallel: False
       generation_kwargs:
         do_sample: True
