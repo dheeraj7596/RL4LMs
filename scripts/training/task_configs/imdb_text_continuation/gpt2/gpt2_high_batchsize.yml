@@ -27,7 +27,7 @@ alg:
   id: ppo
   args:
     n_steps: 128
-    batch_size: 32
+    batch_size: 16
     verbose: 1
     learning_rate: 0.000001
     n_epochs: 5
