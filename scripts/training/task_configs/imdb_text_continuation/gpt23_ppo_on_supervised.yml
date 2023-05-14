@@ -3,7 +3,6 @@ tokenizer:
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
-#  new_tokens: [' <GPT3>', ' </GPT3>']
 
 reward_fn:
   id: learned_reward
@@ -16,7 +15,7 @@ datapool:
   id: imdb
   args:
     seed: 42
-    prompt_prefix: "Continue this text into a positive movie review.\n"
+    prompt_prefix: ""
     prompt_suffix: ""
 
 env:
