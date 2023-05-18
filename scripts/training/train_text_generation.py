@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 
 import yaml
 
+from transformers import set_seed
 from rl4lms.envs.text_generation.logging_utils import Tracker
 from rl4lms.envs.text_generation.training_utils import (
     OnPolicyTrainer,
@@ -79,7 +80,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log_to_wandb", action="store_true", help="Whether to use wandb logging"
     )
+    parser.add_argument(
+        "--seed", type=int, help="seed to use", default=42
+    )
     args = parser.parse_args()
+
+    set_seed(args.seed)
 
     main(
         args.config_path,
