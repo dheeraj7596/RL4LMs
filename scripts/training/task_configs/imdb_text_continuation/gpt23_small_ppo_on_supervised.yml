@@ -15,8 +15,6 @@ datapool:
   id: imdb
   args:
     seed: 13
-    prompt_prefix: ""
-    prompt_suffix: ""
 
 env:
   n_envs: 8
