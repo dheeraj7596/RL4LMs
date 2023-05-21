@@ -1,5 +1,5 @@
 tokenizer:
-  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt_seed_42'
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_imdb_ft_noprompt_seed_13'
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
@@ -14,7 +14,7 @@ reward_fn:
 datapool:
   id: imdb
   args:
-    seed: 42
+    seed: 13
 
 env:
   n_envs: 8
@@ -39,7 +39,7 @@ alg:
   policy:
     id: causal_lm_actor_critic_policy
     args:
-      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_imdb_ft_noprompt_seed_42'
+      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_imdb_ft_noprompt_seed_13'
       apply_model_parallel: False
       generation_kwargs:
         do_sample: True
