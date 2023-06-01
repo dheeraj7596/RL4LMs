@@ -1842,7 +1842,7 @@ class GenerationMixinWithRawScores:
         except Exception as e:
             print("OPENAI request failed", e)
             cont_gpt3 = ""
-
+        logger.warning(f"Generated from GPT3\n{cont_gpt3}")
         gen_inputids = tokenizer(" " + cont_gpt3, return_tensors="pt")["input_ids"].to(input_ids.device)
         next_tokenids = torch.cat([gen_inputids, torch.tensor([gpt3_end_id]).unsqueeze(0).to(input_ids.device)], dim=-1)
         return next_tokenids
