@@ -14,7 +14,7 @@ reward_fn:
 datapool:
   id: commongen
   args:
-    concept_end_token: '\n'
+    concept_end_token: "\n"
     concept_separator_token: ' '
     prefix: ""
 
