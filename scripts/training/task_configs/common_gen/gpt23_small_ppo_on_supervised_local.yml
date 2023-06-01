@@ -1,0 +1,87 @@
+tokenizer:
+  model_name: '/Users/dheerajmekala/Work/RL4LMs/models/gpt2_3_small_commongen_ft_noprompt_seed21'
+  padding_side: left
+  truncation_side: left
+  pad_token_as_eos_token: True
+
+reward_fn:
+  id: common_gen_preference_model
+  args:
+    device: "cpu"
+    batch_size: 1
+    model_type: "11b"
+
+datapool:
+  id: commongen
+  args:
+    concept_end_token: "\n"
+    concept_separator_token: ' '
+    prefix: ""
+
+env:
+  n_envs: 2
+  args:
+    max_prompt_length: 20
+    max_episode_length: 20
+    terminate_on_eos: True
+
+alg:
+  id: ppo
+  args:
+    n_steps: 128
+    batch_size: 2
+    verbose: 1
+    learning_rate: 0.000001
+    n_epochs: 5
+
+  kl_div:
+    coeff: 0.1
+    target_kl: 0.5
+
+  cost_reward:
+    prompt_cost: 0.05
+    generation_cost: 0.05
+    cost_reward_coeff: 0.4
+
+  policy:
+    id: causal_lm_actor_critic_policy
+    args:
+      model_name: '/Users/dheerajmekala/Work/RL4LMs/models/gpt2_3_small_commongen_ft_noprompt_seed21'
+      apply_model_parallel: False
+      generation_kwargs:
+        do_sample: True
+        min_length: 5
+        max_new_tokens: 20
+        top_k: 50
+        use_big_model: True
+        big_model_prompt: "generate a sentence with: "
+        loss_for_big_model: False
+        value_eq_policy: True
+
+train_evaluation:
+  eval_batch_size: 2
+  n_iters: 50
+  eval_every: 10
+  save_every: 1
+  metrics:
+    - id: meteor
+      args: {}
+    - id: rouge
+    - id: bleu
+      args: {}
+    - id: bert_score
+      args:
+        language: en
+    - id: cider
+    - id: spice
+    - id: diversity
+      args: {}
+    - id: gpt3_numtokens
+      args: {}
+    - id: cost_reward
+      args:
+        tokenizer_id: '/Users/dheerajmekala/Work/RL4LMs/models/gpt2_3_small_commongen_ft_noprompt_seed21'
+        prompt_cost: 0.05
+        generation_cost: 0.05
+        truncation_side: 'left'
+        max_prompt_length: 20
