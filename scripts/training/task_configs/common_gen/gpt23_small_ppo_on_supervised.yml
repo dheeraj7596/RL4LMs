@@ -1,5 +1,5 @@
 tokenizer:
-  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_21'
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_13'
   padding_side: left
   truncation_side: left
   pad_token_as_eos_token: True
@@ -49,7 +49,7 @@ alg:
   policy:
     id: causal_lm_actor_critic_policy
     args:
-      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_21'
+      model_name: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_13'
       apply_model_parallel: False
       generation_kwargs:
         do_sample: True
@@ -83,7 +83,7 @@ train_evaluation:
       args: {}
     - id: cost_reward
       args:
-        tokenizer_id: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_21'
+        tokenizer_id: '/data/dheeraj/GPT23/saved_models/gpt2_3_small_commongen_ft_noprompt_seed_13'
         prompt_cost: 0.05
         generation_cost: 0.05
         truncation_side: 'left'
