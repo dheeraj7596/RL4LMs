@@ -5,9 +5,9 @@ tokenizer:
   pad_token_as_eos_token: True
 
 reward_fn:
-   - id: rouge
-     args:
-       rouge_type: "rouge1"
+  id: rouge
+  args:
+    rouge_type: "rouge1"
 #  id: common_gen_preference_model
 #  args:
 #    device: "cpu"
