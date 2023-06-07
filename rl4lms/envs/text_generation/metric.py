@@ -287,6 +287,8 @@ class BERTScoreMetric(BaseMetric):
         self._language = language
         # since models are loaded heavily on cuda:0, use the last one to avoid memory
         self._last_gpu = f"cuda:{torch.cuda.device_count() - 1}"
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -298,6 +300,7 @@ class BERTScoreMetric(BaseMetric):
         split_name: str = None,
     ) -> Tuple[List[float], float]:
         with torch.no_grad():
+            generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
             metric_results = self._metric.compute(
                 predictions=generated_texts,
                 references=reference_texts,
@@ -314,6 +317,8 @@ class BLEUMetric(BaseMetric):
     def __init__(self) -> None:
         super().__init__()
         self._metric = load_metric("bleu")
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -327,6 +332,7 @@ class BLEUMetric(BaseMetric):
 
         tokenized_predictions = []
         tokenized_reference_texts = []
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         for prediction, refs in zip(generated_texts, reference_texts):
             tokenized_prediction = prediction.split()
             tokenized_refs = [ref.split() for ref in refs]
@@ -396,6 +402,8 @@ def get_individual_scores(
 class CIDERMetric(BaseMetric):
     def __init__(self) -> None:
         self._metric = Cider()
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -406,6 +414,7 @@ class CIDERMetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ) -> Tuple[List[float], float]:
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         predictions, references = get_generated_and_predictions(
             prompt_texts, generated_texts, reference_texts, split_name
         )
@@ -424,6 +433,8 @@ class CIDERMetric(BaseMetric):
 class SpiceMetric(BaseMetric):
     def __init__(self) -> None:
         self._metric = Spice()
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -434,6 +445,7 @@ class SpiceMetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ) -> Tuple[List[float], float]:
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         predictions, references = get_generated_and_predictions(
             prompt_texts, generated_texts, reference_texts, split_name
         )
@@ -454,6 +466,8 @@ class DiversityMetrics(BaseMetric):
     def __init__(self, window_size: int = 100) -> None:
         self._msttr_metric = MSTTR(window_size=window_size)
         self._n_gram_metric = NGramStats()
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -465,6 +479,7 @@ class DiversityMetrics(BaseMetric):
         split_name: str = None,
     ) -> Tuple[List[float], float]:
 
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         predictions = Predictions(data={"filename": "", "values": generated_texts})
         diversity_metrics = {}
         msttr_metrics = self._msttr_metric.compute(None, predictions)
