@@ -1,0 +1,25 @@
+datapool:
+  id: commongen
+  args:
+    concept_end_token: "\n"
+    concept_separator_token: ' '
+    prefix: ""
+
+prefix: "generate a sentence with: \n"
+split: "val"
+max_prompt_length: 20
+num_tokens: 20
+
+metrics:
+  - id: meteor
+    args: {}
+  - id: rouge
+  - id: bleu
+    args: {}
+  - id: bert_score
+    args:
+      language: en
+  - id: cider
+  - id: spice
+  - id: diversity
+    args: {}
