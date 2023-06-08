@@ -1,0 +1,27 @@
+datapool:
+  id: wmt16newsonly
+  args: {}
+
+prefix: "Translate the following sentence from english to german:\n"
+split: "test"
+max_prompt_length: 128
+num_tokens: 128
+
+metrics:
+  - id: meteor
+    args: {}
+  - id: rouge
+  - id: bleu
+    args: {}
+  - id: bert_score
+    args:
+      language: en
+  - id: sacre_bleu
+    args:
+      tokenize: "intl"
+  - id: ter
+    args: {}
+  - id: chrf
+    args: {}
+  - id: diversity
+    args: {}
