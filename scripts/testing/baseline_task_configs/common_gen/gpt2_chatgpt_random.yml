@@ -13,7 +13,6 @@ datapool:
 
 split: "val"
 max_prompt_length: 20
-num_tokens: 20
 
 generation_kwargs:
   do_sample: True
