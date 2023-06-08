@@ -730,6 +730,8 @@ class SacreBLEUMetric(BaseMetric):
         super().__init__()
         self._args = args
         self._metric = load_metric("sacrebleu")
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -740,7 +742,7 @@ class SacreBLEUMetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ) -> Tuple[List[float], float]:
-
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         metric_results = self._metric.compute(
             predictions=generated_texts, references=reference_texts, **self._args
         )
@@ -753,6 +755,8 @@ class TERMetric(BaseMetric):
     def __init__(self) -> None:
         super().__init__()
         self._metric = load_metric("ter")
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -763,7 +767,7 @@ class TERMetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ) -> Tuple[List[float], float]:
-
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         metric_results = self._metric.compute(
             predictions=generated_texts, references=reference_texts
         )
@@ -776,6 +780,8 @@ class chrFmetric(BaseMetric):
     def __init__(self) -> None:
         super().__init__()
         self._metric = load_metric("chrf")
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
 
     def compute(
         self,
@@ -786,7 +792,7 @@ class chrFmetric(BaseMetric):
         model: PreTrainedModel = None,
         split_name: str = None,
     ) -> Tuple[List[float], float]:
-
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         metric_results = self._metric.compute(
             predictions=generated_texts, references=reference_texts
         )
