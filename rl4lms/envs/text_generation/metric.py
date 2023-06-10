@@ -275,9 +275,12 @@ class CostRewardMetric(BaseMetric):
                 else:
                     i += 1
             # cost_rewards.append(np.exp(-3 * cost / 15))
-            cost_rewards.append(
-                math.pow((1 - (cost / 10) ** 2), 1/3)
-            )
+            if cost < 10:
+                cost_rewards.append(
+                    math.pow((1 - (cost / 10) ** 2), 1/3)
+                )
+            else:
+                cost_rewards.append(0)
 
         metric_dict = {"avg_cost_reward": (cost_rewards, np.mean(cost_rewards))}
         return metric_dict

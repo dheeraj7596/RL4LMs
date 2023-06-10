@@ -378,7 +378,10 @@ def wrap_onpolicy_alg(
                         else:
                             i += 1
                     # cost_rewards[env_ix] = np.exp(-3 * cost / 15)
-                    cost_rewards[env_ix] = math.pow((1 - (cost / 10) ** 2), 1/3)
+                    if cost < 10:
+                        cost_rewards[env_ix] = math.pow((1 - (cost / 10) ** 2), 1/3)
+                    else:
+                        cost_rewards[env_ix] = 0
                 else:
                     cost_rewards[env_ix] = 0
             return cost_rewards
