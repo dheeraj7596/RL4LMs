@@ -1,3 +1,4 @@
+import math
 import re
 
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -274,7 +275,9 @@ class CostRewardMetric(BaseMetric):
                 else:
                     i += 1
             # cost_rewards.append(np.exp(-3 * cost / 15))
-            cost_rewards.append(1 - (cost / 10) ** 2)
+            cost_rewards.append(
+                math.pow((1 - (cost / 10) ** 2), 1/3)
+            )
 
         metric_dict = {"avg_cost_reward": (cost_rewards, np.mean(cost_rewards))}
         return metric_dict

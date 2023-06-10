@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple, Type
 
@@ -377,7 +378,7 @@ def wrap_onpolicy_alg(
                         else:
                             i += 1
                     # cost_rewards[env_ix] = np.exp(-3 * cost / 15)
-                    cost_rewards[env_ix] = 1 - (cost / 10) ** 2
+                    cost_rewards[env_ix] = math.pow((1 - (cost / 10) ** 2), 1/3)
                 else:
                     cost_rewards[env_ix] = 0
             return cost_rewards
