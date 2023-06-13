@@ -569,6 +569,37 @@ class IWSLT2017EnDe(TextGenPool):
         return pool_instance
 
 
+class IWSLT2017DeEn(TextGenPool):
+    @classmethod
+    def get_dataset(cls, split: str):
+        dataset = load_dataset(
+            "iwslt2017", "iwslt2017-de-en", ignore_verifications=True)
+        return dataset[split]
+
+    @classmethod
+    def prepare(cls,
+                split: str,
+                prompt_suffix: str = "",
+                prompt_prefix: str = "",
+                ):
+        dataset_split = CommonGen.gen_split_name(split)
+        dataset = IWSLT2017DeEn.get_dataset(dataset_split)
+        samples = []
+        for ix, item in tqdm(enumerate(dataset),
+                             desc="Preparing dataset",
+                             total=len(dataset)):
+
+            prompt = prompt_prefix + \
+                item["translation"]["de"] + prompt_suffix
+            sample = Sample(id=f"{split}_{ix}",
+                            prompt_or_input_text=prompt,
+                            references=[item["translation"]["en"]]
+                            )
+            samples.append(sample)
+
+        pool_instance = cls(samples)
+        return pool_instance
+
 class CRD3DialogueGeneration(TextGenPool):
     SOURCE_URL = "https://github.com/RevanthRameshkumar/CRD3/archive/refs/heads/master.zip"
     DEST_BASE_FOLDER = "crd3"

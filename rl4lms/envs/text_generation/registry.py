@@ -22,6 +22,7 @@ from rl4lms.data_pools.custom_text_generation_pools import (
     DailyDialog,
     CNNGPT23,
     WMT16NewsOnlyDatasetDeEn,
+    IWSLT2017DeEn,
 )
 from rl4lms.data_pools.text_generation_pool import TextGenPool
 from rl4lms.envs.text_generation.alg_wrappers import wrap_onpolicy_alg
@@ -102,6 +103,7 @@ class DataPoolRegistry:
         "wmt16newsonly": WMT16NewsOnlyDatasetEnDe,
         "wmt16newsonlydeen": WMT16NewsOnlyDatasetDeEn,
         "iwslt2017en_de": IWSLT2017EnDe,
+        "iwslt2017de_en": IWSLT2017DeEn,
         "crd3": CRD3DialogueGeneration,
         "daily_dialog": DailyDialog,
     }

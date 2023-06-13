@@ -1,0 +1,36 @@
+tokenizer:
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_iwslt17_deen_ft_noprompt_seed_13'
+  padding_side: left
+  truncation_side: right
+  pad_token_as_eos_token: True
+
+datapool:
+  id: iwslt2017de_en
+  args: {}
+
+split: "test"
+max_prompt_length: 128
+
+generation_kwargs:
+#  do_sample: True
+  max_new_tokens: 128
+#  top_k: 50
+
+metrics:
+  - id: meteor
+    args: {}
+  - id: rouge
+  - id: bleu
+    args: {}
+  - id: bert_score
+    args:
+      language: en
+  - id: sacre_bleu
+    args:
+      tokenize: "intl"
+  - id: ter
+    args: {}
+  - id: chrf
+    args: {}
+  - id: diversity
+    args: {}
