@@ -501,6 +501,42 @@ class WMT16NewsOnlyDatasetEnDe(TextGenPool):
         return pool_instance
 
 
+class WMT16NewsOnlyDatasetDeEn(TextGenPool):
+    @classmethod
+    def get_dataset(cls, split: str):
+
+        if split == "train":
+            dataset = load_dataset("news_commentary", "de-en")[split]
+            return dataset
+        else:
+            dataset = load_dataset("wmt16", "de-en")[split]
+        return dataset
+
+    @classmethod
+    def prepare(cls,
+                split: str,
+                prompt_suffix: str = "",
+                prompt_prefix: str = "",
+                ):
+        dataset_split = CommonGen.gen_split_name(split)
+        dataset = WMT16NewsOnlyDatasetDeEn.get_dataset(dataset_split)
+        samples = []
+        for ix, item in tqdm(enumerate(dataset),
+                             desc="Preparing dataset",
+                             total=len(dataset)):
+
+            prompt = prompt_prefix + \
+                item["translation"]["de"] + prompt_suffix
+            sample = Sample(id=f"{split}_{ix}",
+                            prompt_or_input_text=prompt,
+                            references=[item["translation"]["en"]]
+                            )
+            samples.append(sample)
+
+        pool_instance = cls(samples)
+        return pool_instance
+
+
 class IWSLT2017EnDe(TextGenPool):
     @classmethod
     def get_dataset(cls, split: str):
