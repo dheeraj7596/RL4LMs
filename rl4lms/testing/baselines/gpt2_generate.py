@@ -60,21 +60,24 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
     model.eval()
     prompt = """{source}"""
     inputs = [prompt.format_map({"source": sample.prompt_or_input_text}) for sample in batch]
+    inputs_tok = tokenizer(
+        inputs,
+        padding="max_length",
+        max_length=max_prompt_length,
+        return_tensors="pt",
+        truncation=True,
+    )
+    ids = inputs_tok["input_ids"].to("cuda")
+    attn_mask = inputs_tok["attention_mask"].to("cuda")
+    sample_outputs = model.generate(
+        input_ids=ids,
+        attention_mask=attn_mask,
+        **generation_kwargs
+    )
     ans = []
-    for inp in inputs:
-        ids = tokenizer(
-            inp,
-            max_length=max_prompt_length,
-            return_tensors="pt",
-            truncation=True,
-        )["input_ids"].to("cuda")
-        sample_outputs = model.generate(
-            input_ids=ids,
-            **generation_kwargs
-        )
-        for t in sample_outputs:
-            gen_text = tokenizer.decode(t[len(ids[0]):], skip_special_tokens=True)
-            ans.append(gen_text)
+    for t in sample_outputs:
+        gen_text = tokenizer.decode(t[max_prompt_length:], skip_special_tokens=True)
+        ans.append(gen_text)
     return ans
 
 
