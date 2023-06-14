@@ -1,3 +1,5 @@
+import string
+
 from rl4lms.data_pools.text_generation_pool import TextGenPool, Sample
 from rl4lms.data_pools.task_utils.totto import preprocess_utils
 from datasets import load_dataset
@@ -524,9 +526,11 @@ class WMT16NewsOnlyDatasetDeEn(TextGenPool):
         for ix, item in tqdm(enumerate(dataset),
                              desc="Preparing dataset",
                              total=len(dataset)):
-
+            temp_de = item["translation"]["de"]
+            if temp_de[-1] not in string.punctuation:
+                temp_de = temp_de + "."
             prompt = prompt_prefix + \
-                item["translation"]["de"] + prompt_suffix
+                temp_de + prompt_suffix
             sample = Sample(id=f"{split}_{ix}",
                             prompt_or_input_text=prompt,
                             references=[item["translation"]["en"]]

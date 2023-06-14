@@ -1,0 +1,38 @@
+tokenizer:
+  model_name: '/Users/dheerajmekala/Work/RL4LMs/models/gpt2_small_c4_wmt16_deen_ft_noprompt_seed_13'
+  padding_side: left
+  truncation_side: right
+  pad_token_as_eos_token: True
+
+datapool:
+  id: wmt16newsonlydeen
+  args:
+    prompt_prefix: "German : "
+    prompt_suffix: "\nEnglish : "
+
+split: "test"
+max_prompt_length: 128
+
+generation_kwargs:
+#  do_sample: True
+  max_new_tokens: 128
+#  top_k: 50
+
+metrics:
+#  - id: meteor
+#    args: {}
+  - id: rouge
+  - id: bleu
+    args: {}
+#  - id: bert_score
+#    args:
+#      language: en
+#  - id: sacre_bleu
+#    args:
+#      tokenize: "intl"
+#  - id: ter
+#    args: {}
+#  - id: chrf
+#    args: {}
+#  - id: diversity
+#    args: {}
