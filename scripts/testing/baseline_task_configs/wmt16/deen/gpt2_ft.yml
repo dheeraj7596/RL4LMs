@@ -6,7 +6,9 @@ tokenizer:
 
 datapool:
   id: wmt16newsonlydeen
-  args: {}
+  args:
+    prompt_prefix: "German : "
+    prompt_suffix: "\nEnglish : "
 
 split: "test"
 max_prompt_length: 128
