@@ -375,8 +375,8 @@ class CoverageMetric(BaseMetric):
         generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
         ratios = []
         for prompt, prediction in zip(prompt_texts, generated_texts):
-            prompt_words = set(prompt.strip().split())
-            gen_words = set(prediction.strip().split())
+            prompt_words = set(prompt.lower().strip().split())
+            gen_words = set(prediction.lower().strip().split())
             ratio = len(gen_words.intersection(prompt_words))/len(prompt_words)
             ratios.append(ratio)
         metric_dict = {"coverage": (ratios, np.mean(ratios))}
