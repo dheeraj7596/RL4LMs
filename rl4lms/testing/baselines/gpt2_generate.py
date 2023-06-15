@@ -58,6 +58,7 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs):
     model.eval()
+    EOS_TOKEN = '<EOS>'
     prompt = """{source}"""
     inputs = [prompt.format_map({"source": sample.prompt_or_input_text}) for sample in batch]
     inputs_tok = tokenizer(
@@ -77,6 +78,7 @@ def generate_text(model, tokenizer, batch, max_prompt_length, generation_kwargs)
     ans = []
     for t in sample_outputs:
         gen_text = tokenizer.decode(t[max_prompt_length:], skip_special_tokens=True)
+        gen_text = gen_text.split(EOS_TOKEN)[0].strip()
         ans.append(gen_text)
     return ans
 

@@ -1,5 +1,5 @@
 tokenizer:
-  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_wmt16_deen_ft_noprompt_seed_13'
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_wmt16_deen_ft_noprompt_seed_13_eos'
   padding_side: left
   truncation_side: right
   pad_token_as_eos_token: True
