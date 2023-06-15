@@ -1,0 +1,36 @@
+tokenizer:
+  model_name: '/data/dheeraj/GPT23/saved_models/gpt2_small_c4_commongen_ft_noprompt_seed_13'
+  padding_side: left
+  truncation_side: left
+  pad_token_as_eos_token: True
+
+datapool:
+  id: commongen
+  args:
+    concept_end_token: "\n"
+    concept_separator_token: ' '
+    prefix: ""
+
+split: "val"
+max_prompt_length: 20
+
+generation_kwargs:
+  do_sample: True
+  min_length: 5
+  max_new_tokens: 20
+  top_k: 50
+
+metrics:
+  - id: meteor
+    args: {}
+  - id: rouge
+  - id: bleu
+    args: {}
+  - id: bert_score
+    args:
+      language: en
+  - id: cider
+  - id: spice
+  - id: diversity
+    args: {}
+  - id: coverage

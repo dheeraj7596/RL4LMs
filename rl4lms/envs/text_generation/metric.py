@@ -356,6 +356,33 @@ class BLEUMetric(BaseMetric):
             return {"lexical/bleu": (None, "n/a")}
 
 
+class CoverageMetric(BaseMetric):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pattern = r" <GPT3>\s\w+\s->"
+        self.gpt3_end_token = " </GPT3>"
+
+    def compute(
+        self,
+        prompt_texts: List[str],
+        generated_texts: List[str],
+        reference_texts: List[List[str]],
+        meta_infos: List[Dict[str, Any]] = None,
+        model: PreTrainedModel = None,
+        split_name: str = None,
+    ) -> Tuple[List[float], float]:
+
+        generated_texts = [re.sub(self.pattern, '', g).replace(self.gpt3_end_token, " ") for g in generated_texts]
+        ratios = []
+        for prompt, prediction in zip(prompt_texts, generated_texts):
+            prompt_words = set(prompt.strip().split())
+            gen_words = set(prediction.strip().split())
+            ratio = len(gen_words.intersection(prompt_words))/len(prompt_words)
+            ratios.append(ratio)
+        metric_dict = {"coverage": (ratios, np.mean(ratios))}
+        return metric_dict
+
+
 class BLEURTMetric(BaseMetric):
     def __init__(self, config_name: str = None) -> None:
         super().__init__()
