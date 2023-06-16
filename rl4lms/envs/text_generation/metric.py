@@ -16,6 +16,7 @@ from gem_metrics.texts import Predictions
 from rl4lms.envs.text_generation.summ_metrics.summa_c import SummaCConv, SummaCZS
 from rl4lms.data_pools.task_utils.totto.eval_utils import compute_parent, compute_bleu
 from rl4lms.data_pools.custom_text_generation_pools import DailyDialog
+from pywsd.utils import lemmatize_sentence
 from tqdm import tqdm
 import copy
 import rouge
@@ -376,7 +377,7 @@ class CoverageMetric(BaseMetric):
         ratios = []
         for prompt, prediction in zip(prompt_texts, generated_texts):
             prompt_words = set(prompt.lower().strip().split())
-            gen_words = set(prediction.lower().strip().split())
+            gen_words = lemmatize_sentence(prediction.lower())
             ratio = len(gen_words.intersection(prompt_words))/len(prompt_words)
             ratios.append(ratio)
         metric_dict = {"coverage": (ratios, np.mean(ratios))}
