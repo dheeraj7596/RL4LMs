@@ -88,3 +88,4 @@ train_evaluation:
         generation_cost: 0.05
         truncation_side: 'left'
         max_prompt_length: 20
+    - id: coverage

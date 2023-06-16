@@ -377,7 +377,7 @@ class CoverageMetric(BaseMetric):
         ratios = []
         for prompt, prediction in zip(prompt_texts, generated_texts):
             prompt_words = set(prompt.lower().strip().split())
-            gen_words = lemmatize_sentence(prediction.lower())
+            gen_words = set(lemmatize_sentence(prediction.lower()))
             ratio = len(gen_words.intersection(prompt_words))/len(prompt_words)
             ratios.append(ratio)
         metric_dict = {"coverage": (ratios, np.mean(ratios))}
